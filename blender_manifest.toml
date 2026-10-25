@@ -1,0 +1,16 @@
+schema_version = "1.0.0"
+
+id = "house_modules"
+version = "0.7.1"
+name = "ModuleModo"
+tagline = "Procedural low-poly wall modules with window and door openings"
+maintainer = "Dzmitry Ivanou <id.cgtalk@gmail.com>"
+type = "add-on"
+
+tags = ["Add Mesh", "Modeling"]
+
+blender_version_min = "5.2.0"
+
+license = [
+  "SPDX:GPL-3.0-or-later",
+]
