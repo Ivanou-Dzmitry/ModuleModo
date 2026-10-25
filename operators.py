@@ -31,6 +31,7 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
             ('WINDOW', "Window", ""),
             ('DOOR', "Door", ""),
             ('BALCONY', "Door + Window", "Balcony door with a window next to it and an optional slab under them"),
+            ('LOGGIA', "Loggia", "Recess in the wall with a parapet in front and a door and window on its back wall"),
             ('NONE', "None", "Solid wall"),
         ],
         default='WINDOW',
@@ -51,6 +52,12 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
     door_height: FloatProperty(name="Door Height", default=2.1, min=0.2, soft_max=4.0, unit='LENGTH')
     door_step: FloatProperty(name="Door Step", description="Threshold: how far the door sits above the slab", default=0.1, min=0.0, soft_max=0.5, unit='LENGTH')
     flip: BoolProperty(name="Door on Right", default=False)
+    loggia_width: FloatProperty(name="Loggia Width", default=2.6, min=0.8, soft_max=6.0, unit='LENGTH')
+    loggia_height: FloatProperty(name="Opening Height", description="Height of the opening above the parapet", default=1.2, min=0.3, soft_max=3.0, unit='LENGTH')
+    loggia_depth: FloatProperty(name="Loggia Depth", description="How deep the loggia is cut into the wall", default=1.2, min=0.4, soft_max=4.0, unit='LENGTH')
+    loggia_floor: FloatProperty(name="Floor Height", description="Height of the loggia floor above the bottom of the module", default=0.3, min=0.0, soft_max=2.0, unit='LENGTH')
+    parapet_height: FloatProperty(name="Parapet Height", description="Height of the parapet above the loggia floor", default=1.1, min=0.3, soft_max=2.0, unit='LENGTH')
+    parapet_thickness: FloatProperty(name="Parapet Thickness", default=0.15, min=0.03, soft_max=0.6, unit='LENGTH')
     depth: FloatProperty(name="Depth", description="How deep the opening is pushed into the wall (towards -Y)", default=0.2, min=0.0, soft_max=1.0, unit='LENGTH')
     offset_x: FloatProperty(name="Offset X", description="Shift from the module center", default=0.0, soft_min=-5.0, soft_max=5.0, unit='LENGTH')
     sill_height: FloatProperty(name="Height from Floor", default=0.9, min=0.0, soft_max=5.0, unit='LENGTH')
@@ -94,9 +101,18 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
 
         layout.separator()
         layout.prop(self, "opening", expand=True)
-        balcony = self.opening == 'BALCONY'
+        balcony = self.opening in {'BALCONY', 'LOGGIA'}
+        loggia = self.opening == 'LOGGIA'
         if self.opening != 'NONE':
             col = layout.column(align=True)
+            if loggia:
+                col.prop(self, "loggia_width")
+                col.prop(self, "loggia_height")
+                col.prop(self, "loggia_depth")
+                col.prop(self, "loggia_floor")
+                col.prop(self, "parapet_height")
+                col.prop(self, "parapet_thickness")
+                col = layout.column(align=True)
             if balcony:
                 col.prop(self, "door_width")
                 col.prop(self, "door_height")
@@ -125,14 +141,14 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
                 col.prop(self, "arch_rise")
                 col.prop(self, "arch_segments")
 
-            if self.opening in {'WINDOW', 'BALCONY'}:
+            if self.opening in {'WINDOW', 'BALCONY', 'LOGGIA'}:
                 layout.prop(self, "sill")
                 if self.sill:
                     col = layout.column(align=True)
                     col.prop(self, "sill_thickness")
                     col.prop(self, "sill_depth")
 
-            if balcony:
+            if self.opening == 'BALCONY':
                 layout.prop(self, "slab")
                 if self.slab:
                     col = layout.column(align=True)
@@ -176,6 +192,12 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
             "door_width": self.door_width,
             "door_height": self.door_height,
             "flip": self.flip,
+            "loggia_width": self.loggia_width,
+            "loggia_height": self.loggia_height,
+            "loggia_depth": self.loggia_depth,
+            "loggia_floor": self.loggia_floor,
+            "parapet_height": self.parapet_height,
+            "parapet_thickness": self.parapet_thickness,
             "door_step": self.door_step,
             "slab": self.slab,
             "slab_thickness": self.slab_thickness,

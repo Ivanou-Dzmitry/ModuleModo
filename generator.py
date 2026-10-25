@@ -40,6 +40,8 @@ def resolve_params(p):
         return out
     if kind == 'BALCONY':
         return _resolve_balcony(p, out)
+    if kind == 'LOGGIA':
+        return _resolve_loggia(p, out)
 
     count = int(_clamp(p["count"], 1, 3))
     vertical = p["direction"] == 'VERTICAL' and kind == 'WINDOW'
@@ -98,6 +100,39 @@ def resolve_params(p):
     return out
 
 
+def _resolve_loggia(p, out):
+    """A recess in the facade (the loggia) with a parapet in front of its lower part.
+
+    The back wall of the loggia is a door + window module (the balcony layout without
+    the slab) that stands on the loggia floor; the parapet hides its lower part.
+    """
+    width, height = out["width"], out["height"]
+    lw = _clamp(p["loggia_width"], 0.8, width - 0.2)
+    lx0 = _clamp(width / 2 + p["offset_x"] - lw / 2, 0.1, width - 0.1 - lw)
+    floor = _clamp(p["loggia_floor"], 0.0, height / 3)
+    z_open = floor + _clamp(p["parapet_height"], 0.3, height / 2)
+    z_top = _clamp(z_open + p["loggia_height"], z_open + 0.3, height - 0.1)
+    depth = max(p["loggia_depth"], 0.4)
+    thick = _clamp(p["parapet_thickness"], 0.03, depth / 2)
+
+    back_height = z_top - floor
+    back_p = dict(p, width=lw, height=back_height, offset_x=0.0, slab=False, floor_step=True)
+    back = _resolve_balcony(back_p, {"width": lw, "height": back_height, "kind": 'BALCONY',
+                                     "openings": [], "plain": [], "slab": None})
+    out["loggia"] = {
+        "x0": lx0,
+        "x1": lx0 + lw,
+        "cut": lx0 + back["openings"][0]["cell"][1],
+        "floor": floor,
+        "z_open": z_open,
+        "z_top": z_top,
+        "depth": depth,
+        "parapet": thick,
+    }
+    out["back"] = back
+    return out
+
+
 def _arch_segments(p):
     """Segment count of the arch; a pointed arch has the same number on both sides, so it is even."""
     if not p["arch"]:
@@ -153,7 +188,10 @@ def _resolve_balcony(p, out):
     total = dw + gap + ww
     start = _clamp((sx0 + sx1) / 2 + p["offset_x"] - total / 2, sx0 + MIN_MARGIN, max(sx0 + MIN_MARGIN, sx1 - MIN_MARGIN - total))
 
-    door_z0 = base_z + (_clamp(p["door_step"], 0.0, height / 4) if slab_on else 0.0)
+    step = _clamp(p["door_step"], 0.0, height / 4) if (slab_on or p.get("floor_step")) else 0.0
+    if p.get("floor_step"):
+        step = max(step, 0.03)   # the door must not sit flush with the floor, the floor edge needs no extra vertices
+    door_z0 = base_z + step
     door_top = _clamp(door_z0 + p["door_height"], door_z0 + 0.2, height - MIN_MARGIN)
     win_h = _clamp(p["open_height"], 0.1, door_top - base_z - 2 * MIN_MARGIN)
     win_z0 = door_top - win_h
@@ -324,8 +362,14 @@ def build_module(bm, p):
     Everything is built facing -Y first and mirrored in Y at the end.
     """
     r = resolve_params(p)
-    width, height = r["width"], r["height"]
+    if r["kind"] == 'LOGGIA':
+        _build_loggia(bm, r)
+    else:
+        _build_wall(bm, r)
+    _face_plus_y(bm)
 
+
+def _vertex_cache(bm):
     cache = {}
 
     def vert(x, z, y=0.0):
@@ -334,17 +378,87 @@ def build_module(bm, p):
             cache[key] = bm.verts.new((x, y, z))
         return cache[key]
 
+    return vert
+
+
+def _build_wall(bm, r):
+    width, height = r["width"], r["height"]
+    vert = _vertex_cache(bm)
+
     if r["kind"] == 'NONE':
         _plane_face(bm, [vert(0, 0), vert(width, 0), vert(width, height), vert(0, height)])
-    else:
-        for polygon in r["plain"]:
-            _plane_face(bm, [vert(x, z) for x, z in polygon])
-        for opening in r["openings"]:
-            _build_opening(bm, vert, opening, r["depth"])
-        if r["slab"]:
-            _build_slab(bm, vert, r["slab"])
+        return
+    for polygon in r["plain"]:
+        _plane_face(bm, [vert(x, z) for x, z in polygon])
+    for opening in r["openings"]:
+        _build_opening(bm, vert, opening, r["depth"])
+    if r["slab"]:
+        _build_slab(bm, vert, r["slab"])
 
-    _face_plus_y(bm)
+
+def _directed_face(bm, verts, direction):
+    """Create a face whose normal points the way `direction` does."""
+    normal = (verts[1].co - verts[0].co).cross(verts[2].co - verts[1].co)
+    if normal.dot(Vector(direction)) < 0:
+        verts = verts[::-1]
+    return bm.faces.new(verts)
+
+
+def _build_loggia(bm, r):
+    """Facade with a big opening, a loggia behind it and a parapet under the opening.
+
+    Built facing -Y like everything else, so the loggia depth runs towards +Y here.
+    All parts share their vertices with the back wall, so the mesh has no T-junctions.
+    """
+    width, height = r["width"], r["height"]
+    L = r["loggia"]
+    lx0, lx1, cut = L["x0"], L["x1"], L["cut"]
+    fl, zo, zt, depth, thick = L["floor"], L["z_open"], L["z_top"], L["depth"], L["parapet"]
+    vert = _vertex_cache(bm)
+
+    # Facade: the wall plane with the opening above the parapet.
+    c_bl, c_br, c_tr, c_tl = vert(0, 0), vert(width, 0), vert(width, height), vert(0, height)
+    o_bl, o_br, o_tr, o_tl = vert(lx0, zo), vert(lx1, zo), vert(lx1, zt), vert(lx0, zt)
+    _plane_face(bm, [c_bl, o_bl, o_tl, c_tl])
+    _plane_face(bm, [o_br, c_br, c_tr, o_tr])
+    _plane_face(bm, [c_bl, c_br, o_br, o_bl])
+    _plane_face(bm, [o_tl, o_tr, c_tr, c_tl])
+
+    # Back wall: the door and window module, moved to the back of the loggia.
+    before = set(bm.verts)
+    _build_wall(bm, r["back"])
+    back_verts = [v for v in bm.verts if v not in before]
+    bmesh.ops.translate(bm, verts=back_verts, vec=Vector((lx0, depth, fl)))
+    back = {(round(v.co.x, 5), round(v.co.z, 5)): v for v in back_verts if abs(v.co.y - depth) < 1e-6}
+
+    def back_at(x, z):
+        return back[(round(x, 5), round(z, 5))]
+
+    # The back wall has a vertex on its top and bottom edge where the door and window cells meet.
+    # Only the ceiling and the floor touch those edges, so they are a quad plus a triangle and the
+    # facade, parapet and the front edges of the floor and ceiling need no vertex there.
+    bt_l, bt_m, bt_r = back_at(lx0, zt), back_at(cut, zt), back_at(lx1, zt)
+    bf_l, bf_m, bf_r = back_at(lx0, fl), back_at(cut, fl), back_at(lx1, fl)
+    p_open_l, p_open_r = vert(lx0, zo, thick), vert(lx1, zo, thick)
+    p_floor_l, p_floor_r = vert(lx0, fl, thick), vert(lx1, fl, thick)
+
+    _directed_face(bm, [o_tl, o_tr, bt_r, bt_m], (0, 0, -1))
+    _directed_face(bm, [o_tl, bt_m, bt_l], (0, 0, -1))
+    _directed_face(bm, [o_bl, o_br, p_open_r, p_open_l], (0, 0, 1))
+    _directed_face(bm, [p_open_l, p_open_r, p_floor_r, p_floor_l], (0, 1, 0))
+    _directed_face(bm, [p_floor_l, p_floor_r, bf_r, bf_m], (0, 0, 1))
+    _directed_face(bm, [p_floor_l, bf_m, bf_l], (0, 0, 1))
+
+    # Side walls: the L-shaped wall is two quads split by the diagonal from the parapet's
+    # top corner to the back ceiling corner.
+    sides = (
+        (1, o_bl, o_tl, bt_l, p_open_l, bf_l, p_floor_l),
+        (-1, o_br, o_tr, bt_r, p_open_r, bf_r, p_floor_r),
+    )
+    for inward, f_bottom, f_top, b_top, p_open, b_floor, p_floor in sides:
+        direction = (inward, 0, 0)
+        _directed_face(bm, [f_bottom, f_top, b_top, p_open], direction)
+        _directed_face(bm, [p_open, b_top, b_floor, p_floor], direction)
 
 
 def _build_opening(bm, vert, o, depth):

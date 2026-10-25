@@ -39,6 +39,8 @@ PRESETS = (
     ("Door Wall", {**_WINDOW, "opening": 'DOOR', "open_width": 0.9, "open_height": 2.1, "sill": False}),
     ("Balcony: Door + Window", _BALCONY),
     ("Door + Window (No Slab)", {**_BALCONY, "slab": False}),
+    ("Loggia", {**_BALCONY, "opening": 'LOGGIA', "door_step": 0.1, "loggia_width": 2.6, "loggia_height": 1.2,
+                "loggia_depth": 1.2, "loggia_floor": 0.3, "parapet_height": 1.1, "parapet_thickness": 0.15}),
     ("Solid Wall", {**_WINDOW, "opening": 'NONE'}),
 )
 

@@ -11,6 +11,7 @@ The module is built the way you would model it by hand: **plane, inset, extrude*
 - One plane at Y=0 facing +Y (default 3 x 3 m), no thickness and no back side
 - The opening is inset into four faces with diagonals from the wall corners to the opening corners, then its inner fill (quads and one triangle) is pushed back by `Depth` towards -Y
 - Opening: window, door (open at the floor) or solid plane; size, offset, height from floor
+- Loggia module: a recess in the facade (three extrudes) with a parapet in front, door and window on its back wall
 - Balcony module: door and window side by side with tops aligned, optional balcony slab under them (a thick, long sill)
 - 1 to 3 openings, side by side or stacked (windows); the wall is cut into one cell per opening, each cell gets its own inset and extrude
 - Arched top: round or pointed (gothic) arch, arch rise and segment count; the wall above the arch is a fan from the two top corners
