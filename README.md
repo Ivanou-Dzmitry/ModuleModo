@@ -13,6 +13,7 @@ The module is built the way you would model it by hand: **plane, inset, extrude*
 - Opening: window, door (open at the floor) or solid plane; size, offset, height from floor
 - Corner module: two window walls meeting at an outer corner, with the plinth and cornice wrapping around it (windows on both walls or on one)
 - Inner corner module: the matching inner corner, bands mitred along one diagonal
+- Bay window (oriel), splayed or box, with windows only; a full-height variant with no top or bottom stacks into floors (plinth on the ground floor, cornice on the top one)
 - Plinth (bottom band) and cornice (top band) for any module: full-width rectangles extruded out of the wall (the plinth keeps its bottom face), open at the sides so neighbouring modules continue them
 - Door with a threshold; entrance module: 1-3 doors on a threshold with a porch slab (no bottom face, it stands on the ground) and an optional canopy slab
 - Loggia module: a recess in the facade (three extrudes) with a parapet in front, door and window on its back wall

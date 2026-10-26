@@ -450,6 +450,8 @@ def build_module(bm, p):
         _build_corner(bm, p)
     elif p["opening"] == 'INNER_CORNER':
         _build_corner(bm, p, inner=True)
+    elif p["opening"] == 'BAY':
+        _build_bay(bm, p)
     else:
         _build_straight(bm, p)
 
@@ -471,6 +473,132 @@ def _build_straight(bm, p):
         bmesh.ops.translate(bm, verts=inner, vec=Vector((0.0, 0.0, base_h)))
         _build_bands(bm, inner, p, base_h, cornice_h)
     _face_plus_y(bm, [v for v in bm.verts if v not in start_verts], [f for f in bm.faces if f not in start_faces])
+
+
+def _build_bay(bm, p):
+    """A bay window (oriel): a box or a splayed (trapezoid) volume sticking out of the wall.
+
+    The facade has a rectangular opening; the front and the two sides of the bay are ordinary
+    window modules (so they get the usual inset windows), placed and rotated around the opening,
+    and a flat top and bottom close the volume. Every part shares its vertices with its
+    neighbours, so the whole mesh is closed without T-junctions.
+
+    The bay is built in its final orientation: it sticks out towards +Y.
+
+    `bay_full` makes the bay take the whole width and height of the module and leaves out the
+    facade, the top and the bottom: such modules stack into floors and connect to neighbouring
+    walls along their vertical edges. Only this variant takes a plinth and a cornice (a plinth
+    for the ground floor, a cornice for the top one); the ordinary bay ignores them.
+    """
+    width, height = p["width"], p["height"]
+    full = p.get("bay_full", False)
+    bay_w = width if full else _clamp(p["bay_width"], 0.8, width - 0.2)
+    depth = max(p["bay_depth"], 0.2)
+    splay = _clamp(p["bay_splay"], 0.0, max(0.0, min(depth * 2, bay_w / 2 - 0.3)))
+    xl = 0.0 if full else _clamp(width / 2 + p["offset_x"] - bay_w / 2, 0.1, width - 0.1 - bay_w)
+    xr = xl + bay_w
+    z0 = 0.0 if full else _clamp(p["bay_floor"], 0.1, height / 2)
+    bay_h = height if full else _clamp(p["bay_height"], 0.8, height - z0 - 0.1)
+    zt = z0 + bay_h
+    # a full-height bay can carry a plinth and a cornice; the windows get the height that is left
+    hb, ht = _band_heights(p) if full else (0.0, 0.0)
+    if full:
+        # The bands are the outline moved along +Y, which needs sides that are not parallel to Y. The
+        # limit applies with or without bands, so floors with and without them still stack.
+        splay = max(splay, min(0.25, depth * 2, bay_w / 2 - 0.3))
+    front_w = bay_w - 2 * splay
+    side_len = math.hypot(depth, splay)
+    angle = math.atan2(depth, splay)
+
+    if not full:
+        # Facade: the wall plane with the opening for the bay.
+        c_bl, c_br, c_tr, c_tl = (bm.verts.new(v) for v in ((0, 0, 0), (width, 0, 0), (width, 0, height), (0, 0, height)))
+        o_bl, o_br, o_tr, o_tl = (bm.verts.new(v) for v in ((xl, 0, z0), (xr, 0, z0), (xr, 0, zt), (xl, 0, zt)))
+        for verts in ([c_bl, o_bl, o_tl, c_tl], [o_br, c_br, c_tr, o_tr], [c_bl, c_br, o_br, o_bl], [o_tl, o_tr, c_tr, c_tl]):
+            _directed_face(bm, verts, (0, 1, 0))
+
+    def module(length, windowed, open_width):
+        sides = dict(p, opening='WINDOW' if windowed else 'NONE', width=length, height=bay_h - hb - ht, count=1,
+                     base=False, cornice=False, offset_x=0.0, open_width=open_width, mitre=None)
+        before = set(bm.verts)
+        _build_straight(bm, sides)
+        return [v for v in bm.verts if v not in before]
+
+    def place(verts, turn, shift):
+        if turn:
+            bmesh.ops.rotate(bm, cent=(0.0, 0.0, 0.0), matrix=Matrix.Rotation(turn, 3, 'Z'), verts=verts)
+        bmesh.ops.translate(bm, verts=verts, vec=Vector(shift))
+
+    side_windows = p["bay_side_windows"]
+    side_open = max(0.3, min(p["open_width"], side_len - 0.4))
+    place(module(front_w, True, p["open_width"]), 0.0, (xl + splay, depth, z0 + hb))
+    place(module(side_len, side_windows, side_open), angle, (xl, 0.0, z0 + hb))
+    place(module(side_len, side_windows, side_open), -angle, (xr - splay, depth, z0 + hb))
+
+    bmesh.ops.remove_doubles(bm, verts=list(bm.verts), dist=1e-5)   # welds the shared edges
+
+    found = {(round(v.co.x, 5), round(v.co.y, 5), round(v.co.z, 5)): v for v in bm.verts}
+
+    def vert(x, y, z):
+        return found[(round(x, 5), round(y, 5), round(z, 5))]
+
+    if hb or ht:
+        _bay_bands(bm, [(xl, 0.0), (xl + splay, depth), (xr - splay, depth), (xr, 0.0)], hb, ht, p)
+    if not full:   # a full-height bay is open at the top and the bottom so that floors can be stacked
+        for z, direction in ((zt, (0, 0, 1)), (z0, (0, 0, -1))):
+            _directed_face(bm, [vert(xl, 0, z), vert(xl + splay, depth, z), vert(xr - splay, depth, z), vert(xr, 0, z)], direction)
+    bm.normal_update()
+
+
+def _bay_bands(bm, outline, hb, ht, p):
+    """Plinth and cornice of a full-height bay.
+
+    Each band is the strip between the outline of the bay and the same outline moved by the
+    band depth along +Y. At the ends of the module that is the same profile as the straight
+    bands of a neighbouring wall, so the bands run on from module to module. The ends stay open.
+    """
+    if hb:
+        _band_along_outline(bm, outline, hb, 0.0, max(p["base_depth"], 0.02))
+    if ht:
+        _band_along_outline(bm, outline, p["height"] - ht, p["height"], max(p["cornice_depth"], 0.02))
+
+
+def _band_along_outline(bm, outline, z_adj, z_far, depth):
+    """A band attached to the module along `outline` at height `z_adj`, reaching to `z_far`."""
+    path = []
+    for (ax, ay), (bx, by) in zip(outline, outline[1:]):
+        dx, dy = bx - ax, by - ay
+        length = math.hypot(dx, dy)
+        on = []
+        for v in bm.verts:
+            if abs(v.co.z - z_adj) > 1e-5:
+                continue
+            wx, wy = v.co.x - ax, v.co.y - ay
+            t = (wx * dx + wy * dy) / (length * length)
+            if -1e-6 <= t <= 1 + 1e-6 and abs(wx * dy - wy * dx) / length < 1e-5:
+                on.append((t, v))
+        for _, v in sorted(on, key=lambda item: item[0]):
+            if not path or path[-1] is not v:
+                path.append(v)
+
+    made = {}
+
+    def vert(x, y, z):
+        key = (round(x, 5), round(y, 5), round(z, 5))
+        if key not in made:
+            made[key] = bm.verts.new((x, y, z))
+        return made[key]
+
+    towards_adjacent = 1.0 if z_adj > z_far else -1.0   # the face at the module edge looks away from the band
+    for a, b in zip(path, path[1:]):
+        ax, ay, bx, by = a.co.x, a.co.y, b.co.x, b.co.y
+        outward = (-(by - ay), bx - ax, 0.0)
+        a_far, b_far = vert(ax, ay, z_far), vert(bx, by, z_far)
+        a_adj_front, b_adj_front = vert(ax, ay + depth, z_adj), vert(bx, by + depth, z_adj)
+        a_far_front, b_far_front = vert(ax, ay + depth, z_far), vert(bx, by + depth, z_far)
+        _directed_face(bm, [a, b, b_adj_front, a_adj_front], (0, 0, towards_adjacent))
+        _directed_face(bm, [a_adj_front, b_adj_front, b_far_front, a_far_front], outward)
+        _directed_face(bm, [a_far, b_far, b_far_front, a_far_front], (0, 0, -towards_adjacent))
 
 
 def _build_corner(bm, p, inner=False):

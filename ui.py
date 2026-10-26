@@ -21,7 +21,8 @@ ADDON_VERSION = _read_version()
 _WINDOW = {"opening": 'WINDOW', "arch": False, "arch_type": 'ROUND', "sill": True, "count": 1, "direction": 'HORIZONTAL', "offset_x": 0.0,
            "open_width": 1.2, "open_height": 1.4, "sill_height": 0.9, "gap": 0.5,
            "door_width": 0.9, "door_height": 2.1, "door_step": 0.1, "flip": False, "slab": True,
-           "corner_walls": 'BOTH', "base": False, "base_height": 0.3, "base_depth": 0.15,
+           "corner_walls": 'BOTH', "bay_width": 2.6, "bay_depth": 0.8, "bay_splay": 0.5, "bay_floor": 0.6, "bay_height": 2.0,
+           "bay_side_windows": True, "bay_full": False, "base": False, "base_height": 0.3, "base_depth": 0.15,
            "cornice": False, "cornice_height": 0.3, "cornice_depth": 0.25}
 
 # Door + window on a balcony slab: the door stands on a small threshold above the slab and the
@@ -46,6 +47,15 @@ PRESETS = (
     ("Corner: 1 Window", {**_WINDOW, "opening": 'CORNER', "corner_walls": 'ONE', "base": True, "cornice": True}),
     ("Inner Corner: 2 Windows", {**_WINDOW, "opening": 'INNER_CORNER', "corner_walls": 'BOTH', "base": True, "cornice": True}),
     ("Inner Corner: 1 Window", {**_WINDOW, "opening": 'INNER_CORNER', "corner_walls": 'ONE', "base": True, "cornice": True}),
+    ("Bay Window", {**_WINDOW, "opening": 'BAY', "open_width": 1.0, "open_height": 1.2, "sill_height": 0.4}),
+    ("Bay Window (Box)", {**_WINDOW, "opening": 'BAY', "open_width": 1.0, "open_height": 1.2, "sill_height": 0.4,
+                          "bay_width": 2.0, "bay_depth": 0.7, "bay_splay": 0.0}),
+    ("Bay Window (Full Height)", {**_WINDOW, "opening": 'BAY', "bay_full": True, "bay_depth": 0.8, "bay_splay": 0.5,
+                                  "open_width": 1.2, "open_height": 1.4, "sill_height": 0.9}),
+    ("Bay (Full Height) + Plinth", {**_WINDOW, "opening": 'BAY', "bay_full": True, "bay_depth": 0.8, "bay_splay": 0.5,
+                                    "open_width": 1.2, "open_height": 1.4, "sill_height": 0.9, "base": True}),
+    ("Bay (Full Height) + Cornice", {**_WINDOW, "opening": 'BAY', "bay_full": True, "bay_depth": 0.8, "bay_splay": 0.5,
+                                     "open_width": 1.2, "open_height": 1.4, "sill_height": 0.9, "cornice": True}),
     ("Pointed Window", {**_WINDOW, "arch": True, "arch_type": 'POINTED', "open_width": 0.8, "open_height": 2.0,
                         "arch_rise": 0.9, "arch_segments": 6, "sill_height": 0.7}),
     ("Door Wall", {**_WINDOW, "opening": 'DOOR', "open_width": 0.9, "open_height": 2.1, "sill": False}),

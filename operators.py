@@ -35,6 +35,7 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
             ('ENTRANCE', "Entrance", "One to three doors with an optional porch slab and canopy"),
             ('CORNER', "Corner", "Outer corner of two walls with windows; the plinth and cornice wrap around it"),
             ('INNER_CORNER', "Inner Corner", "Inner corner where two walls with windows meet; the plinth and cornice follow it"),
+            ('BAY', "Bay Window", "A box or splayed bay sticking out of the wall, with windows only"),
             ('NONE', "None", "Solid wall"),
         ],
         default='WINDOW',
@@ -55,6 +56,13 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
     door_height: FloatProperty(name="Door Height", default=2.1, min=0.2, soft_max=4.0, unit='LENGTH')
     door_step: FloatProperty(name="Door Step", description="Threshold: how far the door sits above the slab", default=0.1, min=0.0, soft_max=0.5, unit='LENGTH')
     flip: BoolProperty(name="Door on Right", default=False)
+    bay_width: FloatProperty(name="Bay Width", description="Width of the bay where it meets the wall", default=2.6, min=0.8, soft_max=6.0, unit='LENGTH')
+    bay_depth: FloatProperty(name="Bay Depth", description="How far the bay sticks out of the wall", default=0.8, min=0.2, soft_max=3.0, unit='LENGTH')
+    bay_splay: FloatProperty(name="Splay", description="How much narrower the front is on each side; 0 gives a box bay (at least 0.25 for a full-height bay)", default=0.5, min=0.0, soft_max=2.0, unit='LENGTH')
+    bay_floor: FloatProperty(name="Bay Floor Height", description="Height of the bottom of the bay above the bottom of the module", default=0.6, min=0.1, soft_max=2.0, unit='LENGTH')
+    bay_height: FloatProperty(name="Bay Height", default=2.0, min=0.8, soft_max=4.0, unit='LENGTH')
+    bay_full: BoolProperty(name="Full Height", description="The bay takes the whole width and height of the module, with no top, bottom or wall around it, so floors can be stacked", default=False)
+    bay_side_windows: BoolProperty(name="Windows on the Sides", description="Windows on the two side faces as well as on the front", default=True)
     corner_walls: EnumProperty(
         name="Windows",
         items=[
@@ -131,11 +139,23 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
         balcony = self.opening in {'BALCONY', 'LOGGIA'}
         loggia = self.opening == 'LOGGIA'
         entrance = self.opening == 'ENTRANCE'
-        windowed = self.opening in {'WINDOW', 'CORNER', 'INNER_CORNER'}
+        windowed = self.opening in {'WINDOW', 'CORNER', 'INNER_CORNER', 'BAY'}
+        bay = self.opening == 'BAY'
         if self.opening in {'CORNER', 'INNER_CORNER'}:
             layout.prop(self, "corner_walls", expand=True)
         if self.opening != 'NONE':
             col = layout.column(align=True)
+            if bay:
+                col.prop(self, "bay_full")
+                if not self.bay_full:
+                    col.prop(self, "bay_width")
+                col.prop(self, "bay_depth")
+                col.prop(self, "bay_splay")
+                if not self.bay_full:
+                    col.prop(self, "bay_floor")
+                    col.prop(self, "bay_height")
+                col.prop(self, "bay_side_windows")
+                col = layout.column(align=True)
             if loggia:
                 col.prop(self, "loggia_width")
                 col.prop(self, "loggia_height")
@@ -165,7 +185,7 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
                     col.prop(self, "door_step")
             col.prop(self, "depth")
             col.prop(self, "offset_x")
-            if not balcony and not entrance:
+            if not balcony and not entrance and not bay:
                 col.prop(self, "count")
                 if self.count > 1:
                     if windowed:
@@ -195,7 +215,7 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
                     col.prop(self, "canopy_gap")
                 layout.prop(self, "porch_margin")
 
-            if self.opening in {'WINDOW', 'BALCONY', 'LOGGIA', 'CORNER', 'INNER_CORNER'}:
+            if self.opening in {'WINDOW', 'BALCONY', 'LOGGIA', 'CORNER', 'INNER_CORNER', 'BAY'}:
                 layout.prop(self, "sill")
                 if self.sill:
                     col = layout.column(align=True)
@@ -212,17 +232,18 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
                     col.prop(self, "slab_margin")
                     col.prop(self, "slab_offset")
 
-        layout.separator()
-        layout.prop(self, "base")
-        if self.base:
-            col = layout.column(align=True)
-            col.prop(self, "base_height", text="Plinth Height")
-            col.prop(self, "base_depth", text="Plinth Depth")
-        layout.prop(self, "cornice")
-        if self.cornice:
-            col = layout.column(align=True)
-            col.prop(self, "cornice_height", text="Cornice Height")
-            col.prop(self, "cornice_depth", text="Cornice Depth")
+        if self.opening != 'BAY' or self.bay_full:   # an ordinary bay does not use the plinth and the cornice
+            layout.separator()
+            layout.prop(self, "base")
+            if self.base:
+                col = layout.column(align=True)
+                col.prop(self, "base_height", text="Plinth Height")
+                col.prop(self, "base_depth", text="Plinth Depth")
+            layout.prop(self, "cornice")
+            if self.cornice:
+                col = layout.column(align=True)
+                col.prop(self, "cornice_height", text="Cornice Height")
+                col.prop(self, "cornice_depth", text="Cornice Depth")
 
         layout.separator()
         layout.prop(self, "smooth")
@@ -265,6 +286,13 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
             "parapet_height": self.parapet_height,
             "parapet_thickness": self.parapet_thickness,
             "door_step": self.door_step,
+            "bay_width": self.bay_width,
+            "bay_depth": self.bay_depth,
+            "bay_splay": self.bay_splay,
+            "bay_full": self.bay_full,
+            "bay_floor": self.bay_floor,
+            "bay_height": self.bay_height,
+            "bay_side_windows": self.bay_side_windows,
             "corner_walls": self.corner_walls,
             "base": self.base,
             "base_height": self.base_height,
