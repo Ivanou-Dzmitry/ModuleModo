@@ -4,7 +4,7 @@ Procedural low-poly wall modules for Blender 5.2+.
 
 ![preview](preview.png)
 
-**Add > Mesh > Wall Module**, or the **ModuleModo** tab in the 3D viewport sidebar. All parameters live in the redo panel, so they can be tweaked right after creation.
+**Add > Mesh > Wall Module**, or the **ModuleModo** tab in the 3D viewport sidebar, where the 23 buttons are grouped into collapsible sections (Windows, Doors and Entrance, Corners, Bay Windows, Balcony and Loggia, Other) and related variants share a row. All parameters live in the redo panel, so they can be tweaked right after creation.
 
 The module is built the way you would model it by hand: **plane, inset, extrude**.
 
@@ -16,7 +16,7 @@ The module is built the way you would model it by hand: **plane, inset, extrude*
 - Bay window (oriel), splayed or box, with windows only; a full-height variant with no top or bottom stacks into floors (plinth on the ground floor, cornice on the top one)
 - Plinth (bottom band) and cornice (top band) for any module: full-width rectangles extruded out of the wall (the plinth keeps its bottom face), open at the sides so neighbouring modules continue them
 - Door with a threshold; entrance module: 1-3 doors on a threshold with a porch slab (no bottom face, it stands on the ground) and an optional canopy slab
-- Loggia module: a recess in the facade (three extrudes) with a parapet in front, door and window on its back wall
+- Loggia module: a recess in the facade (three extrudes) with a parapet in front, with a door and a window or a single door on its back wall
 - Balcony module: door and window side by side with tops aligned, optional balcony slab under them (a thick, long sill)
 - 1 to 3 openings, side by side or stacked (windows); the wall is cut into one cell per opening, each cell gets its own inset and extrude
 - Arched top: round or pointed (gothic) arch, arch rise and segment count; the wall above the arch is a fan from the two top corners

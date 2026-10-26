@@ -22,7 +22,7 @@ _WINDOW = {"opening": 'WINDOW', "arch": False, "arch_type": 'ROUND', "sill": Tru
            "open_width": 1.2, "open_height": 1.4, "sill_height": 0.9, "gap": 0.5,
            "door_width": 0.9, "door_height": 2.1, "door_step": 0.1, "flip": False, "slab": True,
            "corner_walls": 'BOTH', "bay_width": 2.6, "bay_depth": 0.8, "bay_splay": 0.5, "bay_floor": 0.6, "bay_height": 2.0,
-           "bay_side_windows": True, "bay_full": False, "base": False, "base_height": 0.3, "base_depth": 0.15,
+           "bay_side_windows": True, "bay_full": False, "loggia_content": 'BOTH', "base": False, "base_height": 0.3, "base_depth": 0.15,
            "cornice": False, "cornice_height": 0.3, "cornice_depth": 0.25}
 
 # Door + window on a balcony slab: the door stands on a small threshold above the slab and the
@@ -66,8 +66,72 @@ PRESETS = (
     ("Door + Window (No Slab)", {**_BALCONY, "slab": False}),
     ("Loggia", {**_BALCONY, "opening": 'LOGGIA', "door_step": 0.1, "loggia_width": 2.6, "loggia_height": 1.2,
                 "loggia_depth": 1.2, "loggia_floor": 0.3, "parapet_height": 1.1, "parapet_thickness": 0.15}),
+    ("Loggia (Door Only)", {**_BALCONY, "opening": 'LOGGIA', "loggia_content": 'DOOR', "door_step": 0.1, "loggia_width": 2.0,
+                            "loggia_height": 1.2, "loggia_depth": 1.2, "loggia_floor": 0.3, "parapet_height": 1.1,
+                            "parapet_thickness": 0.15}),
     ("Solid Wall", {**_WINDOW, "opening": 'NONE'}),
 )
+
+
+# The panel is grouped into collapsible sections. A row is either a single wide button (label None) or a
+# caption followed by a few linked buttons: (caption, ((button text, preset name), ...)).
+SECTIONS = (
+    ("windows", "Windows", 'WINDOW', (
+        ("Window", (("With Sill", "Window Wall"), ("No Sill", "Window Wall (No Sill)"))),
+        ("2 Windows", (("Horizontal", "2 Windows (Horizontal)"), ("Vertical", "2 Windows (Vertical)"))),
+        (None, (("Pointed Window", "Pointed Window"),)),
+        (None, (("Window + Plinth + Cornice", "Window Wall + Plinth + Cornice"),)),
+    )),
+    ("doors", "Doors and Entrance", 'HOME', (
+        (None, (("Door", "Door Wall"),)),
+        ("Entrance", (("Porch", "Entrance: Door + Porch"), ("Canopy", "Entrance: Porch + Canopy"),
+                      ("2 Doors", "Entrance: 2 Doors"))),
+    )),
+    ("corners", "Corners", 'AXIS_TOP', (
+        ("Outer Corner", (("2 Windows", "Corner: 2 Windows"), ("1 Window", "Corner: 1 Window"))),
+        ("Inner Corner", (("2 Windows", "Inner Corner: 2 Windows"), ("1 Window", "Inner Corner: 1 Window"))),
+    )),
+    ("bays", "Bay Windows", 'MESH_CUBE', (
+        ("Bay", (("Splayed", "Bay Window"), ("Box", "Bay Window (Box)"))),
+        ("Full Height", (("Plain", "Bay Window (Full Height)"), ("Plinth", "Bay (Full Height) + Plinth"),
+                         ("Cornice", "Bay (Full Height) + Cornice"))),
+    )),
+    ("balcony", "Balcony and Loggia", 'MOD_BUILD', (
+        ("Balcony", (("With Slab", "Balcony: Door + Window"), ("No Slab", "Door + Window (No Slab)"))),
+        ("Loggia", (("Door + Window", "Loggia"), ("Door Only", "Loggia (Door Only)"))),
+    )),
+    ("other", "Other", 'MESH_PLANE', (
+        (None, (("Solid Wall", "Solid Wall"),)),
+    )),
+)
+
+CAPTION_WIDTH = 0.34
+
+
+def _add_button(layout, text, preset_name):
+    op = layout.operator(HOUSE_OT_add_wall_module.bl_idname, text=text)
+    for key, value in dict(PRESETS)[preset_name].items():
+        setattr(op, key, value)
+
+
+def draw_sections(layout):
+    """Draw every section as a collapsible sub-panel; each stays open or closed by itself."""
+    for key, title, icon, rows in SECTIONS:
+        header, body = layout.panel("HOUSE_SECTION_" + key, default_closed=False)
+        header.label(text=title, icon=icon)
+        if body is None:
+            continue
+        col = body.column(align=True)
+        for caption, buttons in rows:
+            if caption is None:
+                for text, preset_name in buttons:
+                    _add_button(col, text, preset_name)
+                continue
+            split = col.split(factor=CAPTION_WIDTH, align=True)
+            split.label(text=caption)
+            row = split.row(align=True)
+            for text, preset_name in buttons:
+                _add_button(row, text, preset_name)
 
 
 class HOUSE_PT_modules(bpy.types.Panel):
@@ -79,11 +143,7 @@ class HOUSE_PT_modules(bpy.types.Panel):
 
     def draw(self, context):
         self.bl_label = "ModuleModo v%s" % ADDON_VERSION
-        layout = self.layout
-        for label, preset in PRESETS:
-            op = layout.operator(HOUSE_OT_add_wall_module.bl_idname, text=label, icon='MOD_BUILD')
-            for key, value in preset.items():
-                setattr(op, key, value)
+        draw_sections(self.layout)
 
 
 classes = (HOUSE_PT_modules,)

@@ -183,7 +183,7 @@ def _resolve_loggia(p, out):
     """A recess in the facade (the loggia) with a parapet in front of its lower part.
 
     The back wall of the loggia is a door + window module (the balcony layout without
-    the slab) that stands on the loggia floor; the parapet hides its lower part.
+    the slab) or a single door, standing on the loggia floor; the parapet hides its lower part.
     """
     width, height = out["width"], out["height"]
     lw = _clamp(p["loggia_width"], 0.8, width - 0.2)
@@ -195,13 +195,22 @@ def _resolve_loggia(p, out):
     thick = _clamp(p["parapet_thickness"], 0.03, depth / 2)
 
     back_height = z_top - floor
-    back_p = dict(p, width=lw, height=back_height, offset_x=0.0, slab=False, floor_step=True)
-    back = _resolve_balcony(back_p, {"width": lw, "height": back_height, "kind": 'BALCONY',
-                                     "openings": [], "plain": [], "slab": None, "slabs": []})
+    if p["loggia_content"] == 'DOOR':
+        # one door in the middle of the back wall: an ordinary door module, so no cut between cells
+        door_p = dict(p, opening='DOOR', width=lw, height=back_height, open_width=p["door_width"],
+                      open_height=p["door_height"], count=1, direction='HORIZONTAL', offset_x=0.0,
+                      door_step=max(p["door_step"], 0.03), sill=False, base=False, cornice=False)
+        back = resolve_params(door_p)
+        cut = None
+    else:
+        back_p = dict(p, width=lw, height=back_height, offset_x=0.0, slab=False, floor_step=True)
+        back = _resolve_balcony(back_p, {"width": lw, "height": back_height, "kind": 'BALCONY',
+                                         "openings": [], "plain": [], "slab": None, "slabs": []})
+        cut = lx0 + back["openings"][0]["cell"][1]
     out["loggia"] = {
         "x0": lx0,
         "x1": lx0 + lw,
-        "cut": lx0 + back["openings"][0]["cell"][1],
+        "cut": cut,
         "floor": floor,
         "z_open": z_open,
         "z_top": z_top,
@@ -758,20 +767,28 @@ def _build_loggia(bm, r):
     def back_at(x, z):
         return back[(round(x, 5), round(z, 5))]
 
-    # The back wall has a vertex on its top and bottom edge where the door and window cells meet.
-    # Only the ceiling and the floor touch those edges, so they are a quad plus a triangle and the
-    # facade, parapet and the front edges of the floor and ceiling need no vertex there.
-    bt_l, bt_m, bt_r = back_at(lx0, zt), back_at(cut, zt), back_at(lx1, zt)
-    bf_l, bf_m, bf_r = back_at(lx0, fl), back_at(cut, fl), back_at(lx1, fl)
+    # With a door and a window the back wall has a vertex on its top and bottom edge where the two
+    # cells meet. Only the ceiling and the floor touch those edges, so they are a quad plus a triangle
+    # and the facade, parapet and the front edges of the floor and ceiling need no vertex there.
+    bt_l, bt_r = back_at(lx0, zt), back_at(lx1, zt)
+    bf_l, bf_r = back_at(lx0, fl), back_at(lx1, fl)
+    bt_m = back_at(cut, zt) if cut is not None else None
+    bf_m = back_at(cut, fl) if cut is not None else None
     p_open_l, p_open_r = vert(lx0, zo, thick), vert(lx1, zo, thick)
     p_floor_l, p_floor_r = vert(lx0, fl, thick), vert(lx1, fl, thick)
 
-    _directed_face(bm, [o_tl, o_tr, bt_r, bt_m], (0, 0, -1))
-    _directed_face(bm, [o_tl, bt_m, bt_l], (0, 0, -1))
+    if bt_m is not None:
+        _directed_face(bm, [o_tl, o_tr, bt_r, bt_m], (0, 0, -1))
+        _directed_face(bm, [o_tl, bt_m, bt_l], (0, 0, -1))
+    else:
+        _directed_face(bm, [o_tl, o_tr, bt_r, bt_l], (0, 0, -1))
     _directed_face(bm, [o_bl, o_br, p_open_r, p_open_l], (0, 0, 1))
     _directed_face(bm, [p_open_l, p_open_r, p_floor_r, p_floor_l], (0, 1, 0))
-    _directed_face(bm, [p_floor_l, p_floor_r, bf_r, bf_m], (0, 0, 1))
-    _directed_face(bm, [p_floor_l, bf_m, bf_l], (0, 0, 1))
+    if bf_m is not None:
+        _directed_face(bm, [p_floor_l, p_floor_r, bf_r, bf_m], (0, 0, 1))
+        _directed_face(bm, [p_floor_l, bf_m, bf_l], (0, 0, 1))
+    else:
+        _directed_face(bm, [p_floor_l, p_floor_r, bf_r, bf_l], (0, 0, 1))
 
     # Side walls: the L-shaped wall is two quads split by the diagonal from the parapet's
     # top corner to the back ceiling corner.

@@ -79,6 +79,14 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
     canopy_thickness: FloatProperty(name="Thickness", default=0.15, min=0.02, soft_max=0.6, unit='LENGTH')
     canopy_depth: FloatProperty(name="Depth", description="How far the canopy sticks out of the wall", default=1.0, min=0.05, soft_max=4.0, unit='LENGTH')
     canopy_gap: FloatProperty(name="Gap above Door", description="Distance between the top of the door and the canopy", default=0.3, min=0.1, soft_max=1.0, unit='LENGTH')
+    loggia_content: EnumProperty(
+        name="Back Wall",
+        items=[
+            ('BOTH', "Door + Window", "A door and a window on the back wall of the loggia"),
+            ('DOOR', "Door Only", "A single door in the middle of the back wall"),
+        ],
+        default='BOTH',
+    )
     loggia_width: FloatProperty(name="Loggia Width", default=2.6, min=0.8, soft_max=6.0, unit='LENGTH')
     loggia_height: FloatProperty(name="Opening Height", description="Height of the opening above the parapet", default=1.2, min=0.3, soft_max=3.0, unit='LENGTH')
     loggia_depth: FloatProperty(name="Loggia Depth", description="How deep the loggia is cut into the wall", default=1.2, min=0.4, soft_max=4.0, unit='LENGTH')
@@ -157,6 +165,7 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
                 col.prop(self, "bay_side_windows")
                 col = layout.column(align=True)
             if loggia:
+                col.prop(self, "loggia_content", expand=True)
                 col.prop(self, "loggia_width")
                 col.prop(self, "loggia_height")
                 col.prop(self, "loggia_depth")
@@ -167,10 +176,11 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
             if balcony:
                 col.prop(self, "door_width")
                 col.prop(self, "door_height")
-                col.prop(self, "open_width", text="Window Width")
-                col.prop(self, "open_height", text="Window Height")
-                col.prop(self, "gap")
-                col.prop(self, "flip")
+                if not (loggia and self.loggia_content == 'DOOR'):
+                    col.prop(self, "open_width", text="Window Width")
+                    col.prop(self, "open_height", text="Window Height")
+                    col.prop(self, "gap")
+                    col.prop(self, "flip")
             elif entrance:
                 col.prop(self, "door_width")
                 col.prop(self, "door_height")
@@ -279,6 +289,7 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
             "door_width": self.door_width,
             "door_height": self.door_height,
             "flip": self.flip,
+            "loggia_content": self.loggia_content,
             "loggia_width": self.loggia_width,
             "loggia_height": self.loggia_height,
             "loggia_depth": self.loggia_depth,
