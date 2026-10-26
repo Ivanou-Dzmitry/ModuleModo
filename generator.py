@@ -1,7 +1,7 @@
 import math
 
 import bmesh
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 MIN_MARGIN = 0.05
 MIN_STRAIGHT = 0.05
@@ -392,11 +392,14 @@ def _plane_face(bm, verts):
     return bm.faces.new(verts)
 
 
-def _face_plus_y(bm):
-    """Mirror the module in Y so the wall normal points to +Y and the recess goes towards -Y."""
-    for v in bm.verts:
+def _face_plus_y(bm, verts=None, faces=None):
+    """Mirror the module in Y so the wall normal points to +Y and the recess goes towards -Y.
+
+    Only the given vertices and faces are mirrored (default: the whole mesh).
+    """
+    for v in (bm.verts if verts is None else verts):
         v.co.y = -v.co.y
-    bmesh.ops.reverse_faces(bm, faces=list(bm.faces))
+    bmesh.ops.reverse_faces(bm, faces=list(bm.faces if faces is None else faces))
     bm.normal_update()
 
 
@@ -443,6 +446,14 @@ def build_module(bm, p):
 
     Everything is built facing -Y first and mirrored in Y at the end.
     """
+    if p["opening"] == 'CORNER':
+        _build_corner(bm, p)
+    else:
+        _build_straight(bm, p)
+
+
+def _build_straight(bm, p):
+    start_verts, start_faces = set(bm.verts), set(bm.faces)
     base_h, cornice_h = _band_heights(p)
     inner_p = dict(p, height=p["height"] - base_h - cornice_h) if (base_h or cornice_h) else p
     r = resolve_params(inner_p)
@@ -457,7 +468,36 @@ def build_module(bm, p):
         inner = [v for v in bm.verts if v not in before]
         bmesh.ops.translate(bm, verts=inner, vec=Vector((0.0, 0.0, base_h)))
         _build_bands(bm, inner, p, base_h, cornice_h)
-    _face_plus_y(bm)
+    _face_plus_y(bm, [v for v in bm.verts if v not in start_verts], [f for f in bm.faces if f not in start_faces])
+
+
+def _build_corner(bm, p):
+    """Outer corner: two window walls meeting at a vertical edge, bands wrapping around it.
+
+    Wall A faces +Y and runs along -X, wall B faces +X and runs along -Y; the corner edge is
+    the Z axis, so the origin is at the bottom of the corner. Each wall is an ordinary module
+    with its own plinth and cornice; at the corner their bands are mitred, the front edge of
+    each runs on to the outer corner, so the two meet along one diagonal and no extra vertices
+    are needed.
+    """
+    width = p["width"]
+    both = p["corner_walls"] == 'BOTH'
+    side_a = dict(p, opening='WINDOW', offset_x=-p["offset_x"], mitre='LAST')
+    side_b = dict(p, opening='WINDOW' if both else 'NONE', offset_x=p["offset_x"], mitre='FIRST')
+
+    before = set(bm.verts)
+    _build_straight(bm, side_a)
+    wall_a = [v for v in bm.verts if v not in before]
+    bmesh.ops.translate(bm, verts=wall_a, vec=Vector((-width, 0.0, 0.0)))
+
+    before = set(bm.verts)
+    _build_straight(bm, side_b)
+    wall_b = [v for v in bm.verts if v not in before]
+    bmesh.ops.rotate(bm, cent=(0.0, 0.0, 0.0), matrix=Matrix.Rotation(-math.pi / 2, 3, 'Z'), verts=wall_b)
+
+    bmesh.ops.remove_doubles(bm, verts=list(bm.verts), dist=1e-5)   # welds the shared corner edge
+
+    bm.normal_update()
 
 
 def _band_heights(p):
@@ -489,14 +529,22 @@ def _build_bands(bm, inner, p, base_h, cornice_h):
     def edge_xs(z):
         return sorted({x for x, vz in found if abs(vz - round(z, 5)) < 1e-4})
 
+    mitre = p.get("mitre")   # 'FIRST' / 'LAST': this end of the wall meets a corner
+
+    def mitred(slab):
+        if mitre == 'FIRST':
+            slab["extend_first"] = slab["depth"]
+        elif mitre == 'LAST':
+            slab["extend_last"] = slab["depth"]
+        return slab
+
     if base_h:
-        bm_slab = {"xs": edge_xs(base_h), "z_bottom": 0.0, "z_top": base_h,
-                   "depth": max(p["base_depth"], 0.02), "bottom": True, "ends": False}
-        _build_slab(bm, vert, bm_slab)
+        _build_slab(bm, vert, mitred({"xs": edge_xs(base_h), "z_bottom": 0.0, "z_top": base_h,
+                                      "depth": max(p["base_depth"], 0.02), "bottom": True, "ends": False}))
     if cornice_h:
-        top_slab = {"xs": edge_xs(height - cornice_h), "z_bottom": height - cornice_h, "z_top": height,
-                    "depth": max(p["cornice_depth"], 0.02), "bottom": True, "ends": False}
-        _build_slab(bm, vert, top_slab)
+        _build_slab(bm, vert, mitred({"xs": edge_xs(height - cornice_h), "z_bottom": height - cornice_h,
+                                      "z_top": height, "depth": max(p["cornice_depth"], 0.02),
+                                      "bottom": True, "ends": False}))
 
 
 def _vertex_cache(bm):
@@ -657,7 +705,8 @@ def _build_opening(bm, vert, o, depth):
 def _build_slab(bm, vert, slab):
     """A slab: a plane strip extruded out towards -Y (built pre-mirror). It has no bottom face when
     slab["bottom"] is False, for a porch that stands on the ground, and no end walls when
-    slab["ends"] is False, for a band that continues into the next module."""
+    slab["ends"] is False, for a band that continues into the next module. `extend_first` and
+    `extend_last` push the front edge past the end of the slab, for a mitred corner."""
     xs, zb, zt, depth = slab["xs"], slab["z_bottom"], slab["z_top"], slab["depth"]
     last = len(xs) - 1
     with_bottom = slab.get("bottom", True)
@@ -665,8 +714,12 @@ def _build_slab(bm, vert, slab):
     # Without a bottom face only the two end walls touch the bottom edge; a band has neither.
     back_b = [vert(x, zb) if (with_bottom or (with_ends and i in (0, last))) else None for i, x in enumerate(xs)]
     back_t = [vert(x, zt) for x in xs]
-    front_b = [bm.verts.new((x, -depth, zb)) for x in xs]
-    front_t = [bm.verts.new((x, -depth, zt)) for x in xs]
+    def front_x(i):
+        # a mitred end: the front edge runs on past the wall end by the slab depth
+        return xs[i] - (slab.get("extend_first", 0.0) if i == 0 else 0.0) + (slab.get("extend_last", 0.0) if i == last else 0.0)
+
+    front_b = [bm.verts.new((front_x(i), -depth, zb)) for i in range(len(xs))]
+    front_t = [bm.verts.new((front_x(i), -depth, zt)) for i in range(len(xs))]
     inside = Vector(((xs[0] + xs[-1]) / 2, -depth / 2, (zb + zt) / 2))
 
     for i in range(last):
