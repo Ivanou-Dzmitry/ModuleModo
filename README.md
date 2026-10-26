@@ -4,7 +4,7 @@ Procedural low-poly wall modules for Blender 5.2+.
 
 ![preview](preview.png)
 
-**Add > Mesh > Wall Module**, or the **ModuleModo** tab in the 3D viewport sidebar, where the 23 buttons are grouped into collapsible sections (Windows, Doors and Entrance, Corners, Bay Windows, Balcony and Loggia, Other) and related variants share a row. All parameters live in the redo panel, so they can be tweaked right after creation.
+**Add > Mesh > Wall Module**, or the **ModuleModo** tab in the 3D viewport sidebar, where the 24 buttons are grouped into collapsible sections (Windows, Doors and Entrance, Corners, Bay Windows, Balcony and Loggia, Other) and related variants share a row. All parameters live in the redo panel, so they can be tweaked right after creation.
 
 The module is built the way you would model it by hand: **plane, inset, extrude**.
 
