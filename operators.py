@@ -32,6 +32,7 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
             ('DOOR', "Door", ""),
             ('BALCONY', "Door + Window", "Balcony door with a window next to it and an optional slab under them"),
             ('LOGGIA', "Loggia", "Recess in the wall with a parapet in front and a door and window on its back wall"),
+            ('ENTRANCE', "Entrance", "One to three doors with an optional porch slab and canopy"),
             ('NONE', "None", "Solid wall"),
         ],
         default='WINDOW',
@@ -52,6 +53,14 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
     door_height: FloatProperty(name="Door Height", default=2.1, min=0.2, soft_max=4.0, unit='LENGTH')
     door_step: FloatProperty(name="Door Step", description="Threshold: how far the door sits above the slab", default=0.1, min=0.0, soft_max=0.5, unit='LENGTH')
     flip: BoolProperty(name="Door on Right", default=False)
+    porch: BoolProperty(name="Porch Slab", description="Slab in front of the doors, standing on the ground", default=True)
+    porch_thickness: FloatProperty(name="Thickness", default=0.2, min=0.02, soft_max=0.6, unit='LENGTH')
+    porch_depth: FloatProperty(name="Depth", description="How far the porch sticks out of the wall", default=1.5, min=0.05, soft_max=5.0, unit='LENGTH')
+    porch_margin: FloatProperty(name="Side Margin", description="Plain wall left and right of the porch and canopy; 0 spans the whole module", default=0.0, min=0.0, soft_max=1.0, unit='LENGTH')
+    canopy: BoolProperty(name="Canopy", description="Slab above the doors", default=False)
+    canopy_thickness: FloatProperty(name="Thickness", default=0.15, min=0.02, soft_max=0.6, unit='LENGTH')
+    canopy_depth: FloatProperty(name="Depth", description="How far the canopy sticks out of the wall", default=1.0, min=0.05, soft_max=4.0, unit='LENGTH')
+    canopy_gap: FloatProperty(name="Gap above Door", description="Distance between the top of the door and the canopy", default=0.3, min=0.1, soft_max=1.0, unit='LENGTH')
     loggia_width: FloatProperty(name="Loggia Width", default=2.6, min=0.8, soft_max=6.0, unit='LENGTH')
     loggia_height: FloatProperty(name="Opening Height", description="Height of the opening above the parapet", default=1.2, min=0.3, soft_max=3.0, unit='LENGTH')
     loggia_depth: FloatProperty(name="Loggia Depth", description="How deep the loggia is cut into the wall", default=1.2, min=0.4, soft_max=4.0, unit='LENGTH')
@@ -103,6 +112,7 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
         layout.prop(self, "opening", expand=True)
         balcony = self.opening in {'BALCONY', 'LOGGIA'}
         loggia = self.opening == 'LOGGIA'
+        entrance = self.opening == 'ENTRANCE'
         if self.opening != 'NONE':
             col = layout.column(align=True)
             if loggia:
@@ -120,12 +130,21 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
                 col.prop(self, "open_height", text="Window Height")
                 col.prop(self, "gap")
                 col.prop(self, "flip")
+            elif entrance:
+                col.prop(self, "door_width")
+                col.prop(self, "door_height")
+                col.prop(self, "door_step")
+                col.prop(self, "count")
+                if self.count > 1:
+                    col.prop(self, "gap")
             else:
                 col.prop(self, "open_width")
                 col.prop(self, "open_height")
+                if self.opening == 'DOOR':
+                    col.prop(self, "door_step")
             col.prop(self, "depth")
             col.prop(self, "offset_x")
-            if not balcony:
+            if not balcony and not entrance:
                 col.prop(self, "count")
                 if self.count > 1:
                     if self.opening == 'WINDOW':
@@ -140,6 +159,20 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
                 col = layout.column(align=True)
                 col.prop(self, "arch_rise")
                 col.prop(self, "arch_segments")
+
+            if entrance:
+                layout.prop(self, "porch")
+                if self.porch:
+                    col = layout.column(align=True)
+                    col.prop(self, "porch_thickness", text="Porch Thickness")
+                    col.prop(self, "porch_depth", text="Porch Depth")
+                layout.prop(self, "canopy")
+                if self.canopy:
+                    col = layout.column(align=True)
+                    col.prop(self, "canopy_thickness", text="Canopy Thickness")
+                    col.prop(self, "canopy_depth", text="Canopy Depth")
+                    col.prop(self, "canopy_gap")
+                layout.prop(self, "porch_margin")
 
             if self.opening in {'WINDOW', 'BALCONY', 'LOGGIA'}:
                 layout.prop(self, "sill")
@@ -199,6 +232,14 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
             "parapet_height": self.parapet_height,
             "parapet_thickness": self.parapet_thickness,
             "door_step": self.door_step,
+            "porch": self.porch,
+            "porch_thickness": self.porch_thickness,
+            "porch_depth": self.porch_depth,
+            "porch_margin": self.porch_margin,
+            "canopy": self.canopy,
+            "canopy_thickness": self.canopy_thickness,
+            "canopy_depth": self.canopy_depth,
+            "canopy_gap": self.canopy_gap,
             "slab": self.slab,
             "slab_thickness": self.slab_thickness,
             "slab_depth": self.slab_depth,

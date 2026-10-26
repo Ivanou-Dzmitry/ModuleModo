@@ -35,13 +35,15 @@ def resolve_params(p):
     width, height = p["width"], p["height"]
     kind = p["opening"]
 
-    out = {"width": width, "height": height, "kind": kind, "openings": [], "plain": [], "slab": None}
+    out = {"width": width, "height": height, "kind": kind, "openings": [], "plain": [], "slab": None, "slabs": []}
     if kind == 'NONE':
         return out
     if kind == 'BALCONY':
         return _resolve_balcony(p, out)
     if kind == 'LOGGIA':
         return _resolve_loggia(p, out)
+    if kind == 'ENTRANCE':
+        return _resolve_entrance(p, out)
 
     count = int(_clamp(p["count"], 1, 3))
     vertical = p["direction"] == 'VERTICAL' and kind == 'WINDOW'
@@ -66,7 +68,7 @@ def resolve_params(p):
         total = count * ow + (count - 1) * g
         x_start = _clamp(width / 2 + p["offset_x"] - total / 2, MIN_MARGIN, width - MIN_MARGIN - total)
         if kind == 'DOOR':
-            z0 = 0.0
+            z0 = _clamp(p["door_step"], 0.0, height / 4)   # threshold; 0 leaves the niche open to the floor
         else:
             z0 = _clamp(p["sill_height"], 2 * MIN_MARGIN, height - 0.1 - MIN_MARGIN)
         oh = _clamp(p["open_height"], 0.1, height - z0 - MIN_MARGIN)
@@ -100,6 +102,83 @@ def resolve_params(p):
     return out
 
 
+def _resolve_entrance(p, out):
+    """Door(s) with an optional porch slab at the bottom and an optional canopy slab on top.
+
+    Both slabs are plane rectangles extruded out of the wall, like the balcony slab. The
+    porch stands on the ground, so it has no bottom face. Doors stand on a threshold above it.
+    """
+    width, height = out["width"], out["height"]
+    count = int(_clamp(p["count"], 1, 3))
+    margin = _clamp(p["porch_margin"], 0.0, width / 4)
+    sx0, sx1 = margin, width - margin
+
+    porch_top = _clamp(p["porch_thickness"], 0.02, height / 4) if p["porch"] else 0.0
+    canopy_t = _clamp(p["canopy_thickness"], 0.02, height / 8) if p["canopy"] else 0.0
+    canopy_gap = max(p["canopy_gap"], 0.1) if p["canopy"] else 0.0
+
+    dw, gap = _fit((sx1 - sx0) - 2 * MIN_MARGIN, count, p["door_width"], p["gap"])
+    total = count * dw + (count - 1) * gap
+    x_start = _clamp((sx0 + sx1) / 2 + p["offset_x"] - total / 2, sx0 + MIN_MARGIN,
+                     max(sx0 + MIN_MARGIN, sx1 - MIN_MARGIN - total))
+
+    z0 = porch_top + _clamp(p["door_step"], 0.0, height / 4)
+    top_limit = height - MIN_MARGIN - canopy_t - canopy_gap
+    door_top = _clamp(z0 + p["door_height"], z0 + 0.3, max(z0 + 0.3, top_limit))
+    cell_top = door_top + canopy_gap if p["canopy"] else height
+    canopy_top = cell_top + canopy_t
+
+    cuts = [x_start + (i + 1) * dw + i * gap + gap / 2 for i in range(count - 1)]
+    xs_cells = [sx0] + cuts + [sx1]
+
+    rise_req = p["arch_rise"] if p["arch"] else 0.0
+    pointed_req = p["arch"] and p["arch_type"] == 'POINTED'
+    segments = _arch_segments(p)
+    rise, pointed = _arch_rise(rise_req, dw, door_top - z0, pointed_req)
+
+    for i, (lo, hi) in enumerate(zip(xs_cells, xs_cells[1:])):
+        x0 = x_start + i * (dw + gap)
+        out["openings"].append({
+            "cell": (lo, hi, porch_top, cell_top),
+            "x0": x0,
+            "x1": x0 + dw,
+            "z0": z0,
+            "z_top": door_top,
+            "rise": rise,
+            "segments": segments,
+            "pointed": pointed,
+            "sill": None,
+        })
+
+    rows = sorted({round(z, 5) for z in (0.0, porch_top, cell_top, canopy_top, height) if z <= height + EPS})
+    if margin > EPS:
+        # Side strips: a fan from the bottom wall corner to the vertices on the slab end line.
+        for corner_x, inner_x in ((0.0, sx0), (width, sx1)):
+            corner, top = (corner_x, 0.0), (corner_x, height)
+            inner = [(inner_x, z) for z in rows]
+            for a, b in zip(inner[:-2], inner[1:-1]):
+                out["plain"].append([corner, a, b])
+            out["plain"].append([corner, inner[-2], inner[-1], top])
+
+    if p["canopy"] and canopy_top < height - EPS:
+        for lo, hi in zip(xs_cells, xs_cells[1:]):
+            out["plain"].append([(lo, canopy_top), (hi, canopy_top), (hi, height), (lo, height)])
+
+    if p["porch"]:
+        xs = {round(x, 5) for x in xs_cells}
+        for o in out["openings"]:
+            if o["z0"] - porch_top <= EPS:   # a door flush with the porch puts its jambs on the slab edge
+                xs.update((round(o["x0"], 5), round(o["x1"], 5)))
+        out["slabs"].append({"xs": sorted(xs), "z_bottom": 0.0, "z_top": porch_top,
+                             "depth": max(p["porch_depth"], 0.05), "bottom": False})
+    if p["canopy"]:
+        out["slabs"].append({"xs": [round(x, 5) for x in xs_cells], "z_bottom": cell_top, "z_top": canopy_top,
+                             "depth": max(p["canopy_depth"], 0.05), "bottom": True})
+
+    out["depth"] = max(p["depth"], 0.0)
+    return out
+
+
 def _resolve_loggia(p, out):
     """A recess in the facade (the loggia) with a parapet in front of its lower part.
 
@@ -118,7 +197,7 @@ def _resolve_loggia(p, out):
     back_height = z_top - floor
     back_p = dict(p, width=lw, height=back_height, offset_x=0.0, slab=False, floor_step=True)
     back = _resolve_balcony(back_p, {"width": lw, "height": back_height, "kind": 'BALCONY',
-                                     "openings": [], "plain": [], "slab": None})
+                                     "openings": [], "plain": [], "slab": None, "slabs": []})
     out["loggia"] = {
         "x0": lx0,
         "x1": lx0 + lw,
@@ -394,6 +473,8 @@ def _build_wall(bm, r):
         _build_opening(bm, vert, opening, r["depth"])
     if r["slab"]:
         _build_slab(bm, vert, r["slab"])
+    for slab in r["slabs"]:
+        _build_slab(bm, vert, slab)
 
 
 def _directed_face(bm, verts, direction):
@@ -523,19 +604,23 @@ def _build_opening(bm, vert, o, depth):
 
 
 def _build_slab(bm, vert, slab):
-    """Balcony slab: the plane strip under the openings extruded out towards -Y (built pre-mirror)."""
+    """A slab: a plane strip extruded out towards -Y (built pre-mirror). It has no bottom face when
+    slab["bottom"] is False, for a porch that stands on the ground."""
     xs, zb, zt, depth = slab["xs"], slab["z_bottom"], slab["z_top"], slab["depth"]
-    back_b = [vert(x, zb) for x in xs]
+    last = len(xs) - 1
+    with_bottom = slab.get("bottom", True)
+    # Without a bottom face only the two end walls touch the bottom edge.
+    back_b = [vert(x, zb) if (with_bottom or i in (0, last)) else None for i, x in enumerate(xs)]
     back_t = [vert(x, zt) for x in xs]
     front_b = [bm.verts.new((x, -depth, zb)) for x in xs]
     front_t = [bm.verts.new((x, -depth, zt)) for x in xs]
     inside = Vector(((xs[0] + xs[-1]) / 2, -depth / 2, (zb + zt) / 2))
 
-    last = len(xs) - 1
     for i in range(last):
         _plane_face(bm, [front_b[i], front_b[i + 1], front_t[i + 1], front_t[i]])
         _oriented_face(bm, [back_t[i], back_t[i + 1], front_t[i + 1], front_t[i]], inside)
-        _oriented_face(bm, [back_b[i], back_b[i + 1], front_b[i + 1], front_b[i]], inside)
+        if with_bottom:
+            _oriented_face(bm, [back_b[i], back_b[i + 1], front_b[i + 1], front_b[i]], inside)
     _oriented_face(bm, [back_b[0], back_t[0], front_t[0], front_b[0]], inside)
     _oriented_face(bm, [back_b[last], back_t[last], front_t[last], front_b[last]], inside)
 
