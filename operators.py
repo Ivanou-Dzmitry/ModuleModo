@@ -93,6 +93,13 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
     slab_margin: FloatProperty(name="Side Margin", description="Plain wall left and right of the slab", default=0.15, min=0.0, soft_max=1.0, unit='LENGTH')
     slab_offset: FloatProperty(name="Bottom Offset", description="Wall strip below the slab", default=0.1, min=0.0, soft_max=1.0, unit='LENGTH')
 
+    base: BoolProperty(name="Plinth", description="Rectangular band along the bottom of the module, sticking out of the wall", default=False)
+    base_height: FloatProperty(name="Height", default=0.3, min=0.02, soft_max=1.0, unit='LENGTH')
+    base_depth: FloatProperty(name="Depth", description="How far the plinth sticks out of the wall", default=0.15, min=0.02, soft_max=1.0, unit='LENGTH')
+    cornice: BoolProperty(name="Cornice", description="Rectangular band along the top of the module, sticking out of the wall", default=False)
+    cornice_height: FloatProperty(name="Height", default=0.3, min=0.02, soft_max=1.0, unit='LENGTH')
+    cornice_depth: FloatProperty(name="Depth", description="How far the cornice sticks out of the wall", default=0.25, min=0.02, soft_max=1.0, unit='LENGTH')
+
     smooth: BoolProperty(name="Smooth by Angle", description="Smooth shading for edges flatter than the angle; sharper edges stay hard", default=True)
     smooth_angle: FloatProperty(name="Angle", default=math.radians(30), min=0.0, max=math.radians(180), subtype='ANGLE')
     uvs: BoolProperty(name="Auto UV", description="Cube-project and pack the UVs, the same way as Auto UV in TechArt Tools", default=True)
@@ -192,6 +199,18 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
                     col.prop(self, "slab_offset")
 
         layout.separator()
+        layout.prop(self, "base")
+        if self.base:
+            col = layout.column(align=True)
+            col.prop(self, "base_height", text="Plinth Height")
+            col.prop(self, "base_depth", text="Plinth Depth")
+        layout.prop(self, "cornice")
+        if self.cornice:
+            col = layout.column(align=True)
+            col.prop(self, "cornice_height", text="Cornice Height")
+            col.prop(self, "cornice_depth", text="Cornice Depth")
+
+        layout.separator()
         layout.prop(self, "smooth")
         if self.smooth:
             layout.prop(self, "smooth_angle")
@@ -232,6 +251,12 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
             "parapet_height": self.parapet_height,
             "parapet_thickness": self.parapet_thickness,
             "door_step": self.door_step,
+            "base": self.base,
+            "base_height": self.base_height,
+            "base_depth": self.base_depth,
+            "cornice": self.cornice,
+            "cornice_height": self.cornice_height,
+            "cornice_depth": self.cornice_depth,
             "porch": self.porch,
             "porch_thickness": self.porch_thickness,
             "porch_depth": self.porch_depth,

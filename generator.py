@@ -438,14 +438,65 @@ def build_module(bm, p):
     opening corners) and its inner fill is pushed back by `depth` towards -Y.
     A window sill is the plane face under the window extruded out towards +Y.
 
+    An optional plinth (bottom band) and cornice (top band) are rectangles of the plane
+    extruded out towards +Y; the module itself is built in the height that is left.
+
     Everything is built facing -Y first and mirrored in Y at the end.
     """
-    r = resolve_params(p)
+    base_h, cornice_h = _band_heights(p)
+    inner_p = dict(p, height=p["height"] - base_h - cornice_h) if (base_h or cornice_h) else p
+    r = resolve_params(inner_p)
+
+    before = set(bm.verts)
     if r["kind"] == 'LOGGIA':
         _build_loggia(bm, r)
     else:
         _build_wall(bm, r)
+
+    if base_h or cornice_h:
+        inner = [v for v in bm.verts if v not in before]
+        bmesh.ops.translate(bm, verts=inner, vec=Vector((0.0, 0.0, base_h)))
+        _build_bands(bm, inner, p, base_h, cornice_h)
     _face_plus_y(bm)
+
+
+def _band_heights(p):
+    """Heights of the plinth and the cornice, kept small enough to leave room for the module."""
+    height = p["height"]
+    base_h = _clamp(p["base_height"], 0.02, height / 4) if p["base"] else 0.0
+    if p["opening"] == 'ENTRANCE' and p["porch"]:
+        base_h = 0.0   # the porch slab already stands on the ground and acts as the base
+    cornice_h = _clamp(p["cornice_height"], 0.02, height / 4) if p["cornice"] else 0.0
+    return base_h, cornice_h
+
+
+def _build_bands(bm, inner, p, base_h, cornice_h):
+    """Plinth and cornice: full-width rectangles extruded out of the wall plane.
+
+    A band shares every vertex of the module's edge it touches, so there are no T-junctions.
+    The plinth keeps its bottom face: on an upper floor it does not meet the module below
+    (on the ground floor that face is easy to delete by hand).
+    """
+    height = p["height"]
+    found = {(round(v.co.x, 5), round(v.co.z, 5)): v for v in inner if abs(v.co.y) < 1e-6}
+
+    def vert(x, z):
+        key = (round(x, 5), round(z, 5))
+        if key not in found:
+            found[key] = bm.verts.new((x, 0.0, z))
+        return found[key]
+
+    def edge_xs(z):
+        return sorted({x for x, vz in found if abs(vz - round(z, 5)) < 1e-4})
+
+    if base_h:
+        bm_slab = {"xs": edge_xs(base_h), "z_bottom": 0.0, "z_top": base_h,
+                   "depth": max(p["base_depth"], 0.02), "bottom": True, "ends": False}
+        _build_slab(bm, vert, bm_slab)
+    if cornice_h:
+        top_slab = {"xs": edge_xs(height - cornice_h), "z_bottom": height - cornice_h, "z_top": height,
+                    "depth": max(p["cornice_depth"], 0.02), "bottom": True, "ends": False}
+        _build_slab(bm, vert, top_slab)
 
 
 def _vertex_cache(bm):
@@ -605,12 +656,14 @@ def _build_opening(bm, vert, o, depth):
 
 def _build_slab(bm, vert, slab):
     """A slab: a plane strip extruded out towards -Y (built pre-mirror). It has no bottom face when
-    slab["bottom"] is False, for a porch that stands on the ground."""
+    slab["bottom"] is False, for a porch that stands on the ground, and no end walls when
+    slab["ends"] is False, for a band that continues into the next module."""
     xs, zb, zt, depth = slab["xs"], slab["z_bottom"], slab["z_top"], slab["depth"]
     last = len(xs) - 1
     with_bottom = slab.get("bottom", True)
-    # Without a bottom face only the two end walls touch the bottom edge.
-    back_b = [vert(x, zb) if (with_bottom or i in (0, last)) else None for i, x in enumerate(xs)]
+    with_ends = slab.get("ends", True)
+    # Without a bottom face only the two end walls touch the bottom edge; a band has neither.
+    back_b = [vert(x, zb) if (with_bottom or (with_ends and i in (0, last))) else None for i, x in enumerate(xs)]
     back_t = [vert(x, zt) for x in xs]
     front_b = [bm.verts.new((x, -depth, zb)) for x in xs]
     front_t = [bm.verts.new((x, -depth, zt)) for x in xs]
@@ -621,8 +674,9 @@ def _build_slab(bm, vert, slab):
         _oriented_face(bm, [back_t[i], back_t[i + 1], front_t[i + 1], front_t[i]], inside)
         if with_bottom:
             _oriented_face(bm, [back_b[i], back_b[i + 1], front_b[i + 1], front_b[i]], inside)
-    _oriented_face(bm, [back_b[0], back_t[0], front_t[0], front_b[0]], inside)
-    _oriented_face(bm, [back_b[last], back_t[last], front_t[last], front_b[last]], inside)
+    if with_ends:
+        _oriented_face(bm, [back_b[0], back_t[0], front_t[0], front_b[0]], inside)
+        _oriented_face(bm, [back_b[last], back_t[last], front_t[last], front_b[last]], inside)
 
 
 def _extrude_sill(bm, top_l, top_r, bottom_l, bottom_r, depth):

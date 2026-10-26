@@ -20,7 +20,9 @@ ADDON_VERSION = _read_version()
 # Typical sizes in metres: window 1.2 x 1.4 with the sill at 0.9, interior door 0.9 x 2.1.
 _WINDOW = {"opening": 'WINDOW', "arch": False, "arch_type": 'ROUND', "sill": True, "count": 1, "direction": 'HORIZONTAL', "offset_x": 0.0,
            "open_width": 1.2, "open_height": 1.4, "sill_height": 0.9, "gap": 0.5,
-           "door_width": 0.9, "door_height": 2.1, "door_step": 0.1, "flip": False, "slab": True}
+           "door_width": 0.9, "door_height": 2.1, "door_step": 0.1, "flip": False, "slab": True,
+           "base": False, "base_height": 0.3, "base_depth": 0.15,
+           "cornice": False, "cornice_height": 0.3, "cornice_depth": 0.25}
 
 # Door + window on a balcony slab: the door stands on a small threshold above the slab and the
 # window top is level with the door top.
@@ -39,6 +41,7 @@ PRESETS = (
     ("Window Wall (No Sill)", {**_WINDOW, "sill": False}),
     ("2 Windows (Horizontal)", {**_WINDOW, "count": 2, "open_width": 0.8, "gap": 0.6}),
     ("2 Windows (Vertical)", {**_WINDOW, "count": 2, "direction": 'VERTICAL', "open_height": 0.7, "sill_height": 0.7, "gap": 0.4}),
+    ("Window Wall + Plinth + Cornice", {**_WINDOW, "base": True, "cornice": True}),
     ("Pointed Window", {**_WINDOW, "arch": True, "arch_type": 'POINTED', "open_width": 0.8, "open_height": 2.0,
                         "arch_rise": 0.9, "arch_segments": 6, "sill_height": 0.7}),
     ("Door Wall", {**_WINDOW, "opening": 'DOOR', "open_width": 0.9, "open_height": 2.1, "sill": False}),
