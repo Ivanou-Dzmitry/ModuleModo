@@ -44,6 +44,8 @@ PRESETS = (
     ("Window Wall + Plinth + Cornice", {**_WINDOW, "base": True, "cornice": True}),
     ("Corner: 2 Windows", {**_WINDOW, "opening": 'CORNER', "corner_walls": 'BOTH', "base": True, "cornice": True}),
     ("Corner: 1 Window", {**_WINDOW, "opening": 'CORNER', "corner_walls": 'ONE', "base": True, "cornice": True}),
+    ("Inner Corner: 2 Windows", {**_WINDOW, "opening": 'INNER_CORNER', "corner_walls": 'BOTH', "base": True, "cornice": True}),
+    ("Inner Corner: 1 Window", {**_WINDOW, "opening": 'INNER_CORNER', "corner_walls": 'ONE', "base": True, "cornice": True}),
     ("Pointed Window", {**_WINDOW, "arch": True, "arch_type": 'POINTED', "open_width": 0.8, "open_height": 2.0,
                         "arch_rise": 0.9, "arch_segments": 6, "sill_height": 0.7}),
     ("Door Wall", {**_WINDOW, "opening": 'DOOR', "open_width": 0.9, "open_height": 2.1, "sill": False}),

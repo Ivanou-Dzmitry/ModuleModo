@@ -448,6 +448,8 @@ def build_module(bm, p):
     """
     if p["opening"] == 'CORNER':
         _build_corner(bm, p)
+    elif p["opening"] == 'INNER_CORNER':
+        _build_corner(bm, p, inner=True)
     else:
         _build_straight(bm, p)
 
@@ -471,32 +473,39 @@ def _build_straight(bm, p):
     _face_plus_y(bm, [v for v in bm.verts if v not in start_verts], [f for f in bm.faces if f not in start_faces])
 
 
-def _build_corner(bm, p):
-    """Outer corner: two window walls meeting at a vertical edge, bands wrapping around it.
+def _build_corner(bm, p, inner=False):
+    """Two window walls meeting at a vertical edge on the Z axis, bands mitred at the corner.
 
-    Wall A faces +Y and runs along -X, wall B faces +X and runs along -Y; the corner edge is
-    the Z axis, so the origin is at the bottom of the corner. Each wall is an ordinary module
-    with its own plinth and cornice; at the corner their bands are mitred, the front edge of
-    each runs on to the outer corner, so the two meet along one diagonal and no extra vertices
-    are needed.
+    Outer corner: wall A faces +Y and runs along -X, wall B faces +X and runs along -Y (the
+    solid is behind both). Inner corner: wall A runs along +X, wall B along +Y, and the two
+    face into the quadrant between them. The origin is at the bottom of the corner edge.
+
+    Each wall is an ordinary module with its own plinth and cornice. At the corner the front
+    edge of each band runs on to the outer corner (outer) or stops at the inner vertex (inner),
+    so the two bands meet along one diagonal and no extra vertices are needed.
     """
     width = p["width"]
     both = p["corner_walls"] == 'BOTH'
-    side_a = dict(p, opening='WINDOW', offset_x=-p["offset_x"], mitre='LAST')
-    side_b = dict(p, opening='WINDOW' if both else 'NONE', offset_x=p["offset_x"], mitre='FIRST')
+    # Positive offset moves the windows away from the corner. The corner is at A's last end and
+    # B's first end for an outer corner, and the other way round for an inner one.
+    away = -p["offset_x"] if not inner else p["offset_x"]
+    side_a = dict(p, opening='WINDOW', offset_x=away, mitre='FIRST_IN' if inner else 'LAST')
+    side_b = dict(p, opening='WINDOW' if both else 'NONE', offset_x=-away, mitre='LAST_IN' if inner else 'FIRST')
 
     before = set(bm.verts)
     _build_straight(bm, side_a)
     wall_a = [v for v in bm.verts if v not in before]
-    bmesh.ops.translate(bm, verts=wall_a, vec=Vector((-width, 0.0, 0.0)))
+    if not inner:
+        bmesh.ops.translate(bm, verts=wall_a, vec=Vector((-width, 0.0, 0.0)))
 
     before = set(bm.verts)
     _build_straight(bm, side_b)
     wall_b = [v for v in bm.verts if v not in before]
     bmesh.ops.rotate(bm, cent=(0.0, 0.0, 0.0), matrix=Matrix.Rotation(-math.pi / 2, 3, 'Z'), verts=wall_b)
+    if inner:
+        bmesh.ops.translate(bm, verts=wall_b, vec=Vector((0.0, width, 0.0)))
 
     bmesh.ops.remove_doubles(bm, verts=list(bm.verts), dist=1e-5)   # welds the shared corner edge
-
     bm.normal_update()
 
 
@@ -529,13 +538,20 @@ def _build_bands(bm, inner, p, base_h, cornice_h):
     def edge_xs(z):
         return sorted({x for x, vz in found if abs(vz - round(z, 5)) < 1e-4})
 
-    mitre = p.get("mitre")   # 'FIRST' / 'LAST': this end of the wall meets a corner
+    # 'FIRST' / 'LAST': this end of the wall meets an outer corner, the band runs on past the wall end.
+    # '..._IN': an inner corner, the band stops short of the wall end.
+    mitre = p.get("mitre")
 
     def mitred(slab):
+        depth = slab["depth"]
         if mitre == 'FIRST':
-            slab["extend_first"] = slab["depth"]
+            slab["extend_first"] = depth
         elif mitre == 'LAST':
-            slab["extend_last"] = slab["depth"]
+            slab["extend_last"] = depth
+        elif mitre == 'FIRST_IN':
+            slab["extend_first"] = -depth
+        elif mitre == 'LAST_IN':
+            slab["extend_last"] = -depth
         return slab
 
     if base_h:

@@ -34,6 +34,7 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
             ('LOGGIA', "Loggia", "Recess in the wall with a parapet in front and a door and window on its back wall"),
             ('ENTRANCE', "Entrance", "One to three doors with an optional porch slab and canopy"),
             ('CORNER', "Corner", "Outer corner of two walls with windows; the plinth and cornice wrap around it"),
+            ('INNER_CORNER', "Inner Corner", "Inner corner where two walls with windows meet; the plinth and cornice follow it"),
             ('NONE', "None", "Solid wall"),
         ],
         default='WINDOW',
@@ -122,7 +123,7 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
         col = layout.column(align=True)
         col.prop(self, "width")
         col.prop(self, "height")
-        if self.opening != 'CORNER':
+        if self.opening not in {'CORNER', 'INNER_CORNER'}:
             layout.prop(self, "pivot")
 
         layout.separator()
@@ -130,8 +131,8 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
         balcony = self.opening in {'BALCONY', 'LOGGIA'}
         loggia = self.opening == 'LOGGIA'
         entrance = self.opening == 'ENTRANCE'
-        windowed = self.opening in {'WINDOW', 'CORNER'}
-        if self.opening == 'CORNER':
+        windowed = self.opening in {'WINDOW', 'CORNER', 'INNER_CORNER'}
+        if self.opening in {'CORNER', 'INNER_CORNER'}:
             layout.prop(self, "corner_walls", expand=True)
         if self.opening != 'NONE':
             col = layout.column(align=True)
@@ -194,7 +195,7 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
                     col.prop(self, "canopy_gap")
                 layout.prop(self, "porch_margin")
 
-            if self.opening in {'WINDOW', 'BALCONY', 'LOGGIA', 'CORNER'}:
+            if self.opening in {'WINDOW', 'BALCONY', 'LOGGIA', 'CORNER', 'INNER_CORNER'}:
                 layout.prop(self, "sill")
                 if self.sill:
                     col = layout.column(align=True)
@@ -288,7 +289,7 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
 
         bm = bmesh.new()
         generator.build_module(bm, params)
-        if self.opening != 'CORNER':
+        if self.opening not in {'CORNER', 'INNER_CORNER'}:
             generator.apply_pivot(bm, self.pivot, self.width)
 
         mesh = bpy.data.meshes.new("WallModule")
