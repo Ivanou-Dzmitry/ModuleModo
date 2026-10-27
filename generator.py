@@ -284,11 +284,11 @@ def _resolve_entrance(p, out):
         _edge_strip(out["plain"], corner_x, inner_x, strip_rows, height)
 
     if above:
-        last = len(xs_cells) - 2
-        for i, (lo, hi) in enumerate(zip(xs_cells, xs_cells[1:])):
-            top_lo = 0.0 if i == 0 else lo
-            top_hi = width if i == last else hi
-            out["plain"].append([(lo, canopy_top), (hi, canopy_top), (top_hi, height), (top_lo, height)])
+        # The top edge keeps only its two corners: one quad on the left, a fan of triangles to the right corner.
+        top_lo, top_hi = (0.0, height), (width, height)
+        out["plain"].append([(xs_cells[0], canopy_top), (xs_cells[1], canopy_top), top_hi, top_lo])
+        for lo, hi in zip(xs_cells[1:], xs_cells[2:]):
+            out["plain"].append([(lo, canopy_top), (hi, canopy_top), top_hi])
 
     if p["porch"]:
         xs = {round(x, 5) for x in xs_cells}
