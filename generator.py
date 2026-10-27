@@ -98,8 +98,66 @@ def resolve_params(p):
             "sill": sill,
         })
 
+    for opening in out["openings"]:
+        opening["frame"] = _frame_spec(opening, p)
+        opening["trim"] = None if opening["frame"] else _trim_spec(opening, p)
+
     out["depth"] = max(p["depth"], 0.0)
     return out
+
+
+def _frame_spec(o, p):
+    """A frame round an opening: two posts and a head (a flat bar, or an arch band over an arch).
+
+    The frame replaces the lintel and the arch band. It is sized to stay inside the cell of the
+    opening and is left out when there is no room for it.
+    """
+    if not p.get("frame"):
+        return None
+    cx0, cx1, cz0, cz1 = o["cell"]
+    room_x = min(o["x0"] - cx0, cx1 - o["x1"]) - 0.05
+    room_up = cz1 - o["z_top"] - 0.05
+    if o["rise"] > 0:
+        room_up /= 1.7 if o["pointed"] else 1.05    # the offset of an arch is longer at its tip
+    # A raised opening without a sill gets a bar under it too: the frame is a closed ring. A sill
+    # takes the place of that bar, and an opening near the floor (a door) has none.
+    bottom = o["sill"] is None and o["z0"] - cz0 >= 0.25
+    width = min(p.get("frame_width", 0.12), room_x, room_up)
+    if bottom:
+        width = min(width, o["z0"] - cz0 - 0.05)
+    if width < 0.03:
+        return None
+    return {"width": width, "depth": max(p.get("frame_depth", 0.04), 0.02), "bottom": bottom}
+
+
+def _trim_spec(o, p):
+    """Trim above an opening: a trapezoid lintel over a straight top, an archivolt band round an arch.
+
+    Both are plane regions extruded out of the wall; they are sized so that they stay inside the
+    cell of the opening, and left out when there is no room for them.
+    """
+    if not p.get("trim"):
+        return None
+    cx0, cx1, cz0, cz1 = o["cell"]
+    depth = max(p.get("trim_depth", 0.06), 0.02)
+    room_x = min(o["x0"] - cx0, cx1 - o["x1"]) - 0.05
+    room_up = cz1 - o["z_top"] - 0.05
+    if o["rise"] > 0:
+        # the offset of a pointed arch is longer at the tip, so keep more room above it
+        width = min(p.get("trim_width", 0.2), room_x, room_up / (1.7 if o["pointed"] else 1.05))
+        if width < 0.03:
+            return None
+        return {"kind": 'ARCH', "width": width, "depth": depth}
+    height = min(p.get("trim_height", 0.35), room_up)
+    if height < 0.05:
+        return None
+    # The top corners of the lintel must stay inside the face above the opening, that is on the inner
+    # side of the diagonals that run from the cell corners to the corners of the opening.
+    t = (cz1 - o["z_top"] - height) / (cz1 - o["z_top"])
+    left_limit = o["x0"] - (cx0 + t * (o["x0"] - cx0)) - 0.03
+    right_limit = (cx1 - t * (cx1 - o["x1"])) - o["x1"] - 0.03
+    flare = _clamp(p.get("trim_flare", 0.15), 0.0, max(min(left_limit, right_limit, room_x), 0.0))
+    return {"kind": 'LINTEL', "height": height, "flare": flare, "depth": depth}
 
 
 def _resolve_entrance(p, out):
@@ -802,6 +860,147 @@ def _build_loggia(bm, r):
         _directed_face(bm, [p_open, b_top, b_floor, p_floor], direction)
 
 
+def _offset_row(vert, arch_row, width):
+    """The outer row of an arch band: the arch moved out by `width`, with horizontal feet at the springs."""
+    pts = [(v.co.x, v.co.z) for v in arch_row]
+    count = len(pts) - 1
+
+    def normal(a, b):
+        dx, dz = b[0] - a[0], b[1] - a[1]
+        length = math.hypot(dx, dz)
+        return (-dz / length, dx / length)
+
+    outer = [vert(pts[0][0] - width, pts[0][1])]
+    for k in range(1, count):
+        n1, n2 = normal(pts[k - 1], pts[k]), normal(pts[k], pts[k + 1])
+        scale = width / (1.0 + n1[0] * n2[0] + n1[1] * n2[1])    # miter: the offset is `width` on both sides
+        outer.append(vert(pts[k][0] + (n1[0] + n2[0]) * scale, pts[k][1] + (n1[1] + n2[1]) * scale))
+    outer.append(vert(pts[-1][0] + width, pts[-1][1]))
+    return outer
+
+
+def _archivolt_band(bm, vert, arch_row, outer, depth, feet):
+    """The band between an arch and its outer row, extruded out towards -Y. `feet` closes its two ends.
+
+    The front vertices come from the shared cache, so a frame that meets the band shares them.
+    """
+    def front(v):
+        return vert(v.co.x, v.co.z, -depth)
+
+    for k in range(len(arch_row) - 1):
+        a, b = arch_row[k].co, arch_row[k + 1].co
+        e, f = outer[k].co, outer[k + 1].co
+        _plane_face(bm, [front(arch_row[k]), front(arch_row[k + 1]), front(outer[k + 1]), front(outer[k])])
+        _directed_face(bm, [arch_row[k], arch_row[k + 1], front(arch_row[k + 1]), front(arch_row[k])], (b.z - a.z, 0, a.x - b.x))
+        _directed_face(bm, [outer[k], outer[k + 1], front(outer[k + 1]), front(outer[k])], (e.z - f.z, 0, f.x - e.x))
+    if feet:
+        _directed_face(bm, [arch_row[0], outer[0], front(outer[0]), front(arch_row[0])], (0, 0, -1))
+        _directed_face(bm, [arch_row[-1], outer[-1], front(outer[-1]), front(arch_row[-1])], (0, 0, -1))
+
+
+def _extrude_frame(bm, vert, depth, window, foot, head, wall=None, feet=False, bottom=False):
+    """A frame: two posts and a head round a window, extruded out towards -Y.
+
+    `window` is (open_bl, open_br, spring_l, spring_r, arch_row or None), `foot` is the front
+    vertices (left, right) of the outer outline's feet, and `head` is (head_l, head_r, outer row or
+    None): the top corners of the outer outline for a flat head, or the outer row of the arch band.
+    `wall` is the wall vertices (lb, rb) of those feet. It gives the posts their outer sides; leave it
+    out when a sill under the posts builds the sides. `feet` closes the bottoms of the posts; a sill
+    that carries the posts does it instead. With `bottom` the frame is a closed ring: a bar under the
+    window joins the posts, and the feet are its underside.
+    """
+    open_bl, open_br, spring_l, spring_r, arch_row = window
+    flb, frb = foot
+    head_l, head_r, outer = head
+
+    def F(v):
+        return vert(v.co.x, v.co.z, -depth)
+
+    if arch_row:
+        _plane_face(bm, [flb, F(open_bl), F(spring_l), F(outer[0])])
+        _archivolt_band(bm, vert, arch_row, outer, depth, feet=False)
+        _plane_face(bm, [F(open_br), frb, F(outer[-1]), F(spring_r)])
+    else:
+        _plane_face(bm, [flb, F(open_bl), F(spring_l), F(head_l)])
+        _plane_face(bm, [F(spring_l), F(spring_r), F(head_r), F(head_l)])
+        _plane_face(bm, [F(open_br), frb, F(head_r), F(spring_r)])
+        _directed_face(bm, [head_l, head_r, F(head_r), F(head_l)], (0, 0, 1))
+        _directed_face(bm, [spring_l, spring_r, F(spring_r), F(spring_l)], (0, 0, -1))
+    if wall:
+        lb, rb = wall
+        _directed_face(bm, [lb, head_l, F(head_l), flb], (-1, 0, 0))
+        _directed_face(bm, [head_r, rb, frb, F(head_r)], (1, 0, 0))
+        if feet:
+            _directed_face(bm, [lb, open_bl, F(open_bl), flb], (0, 0, -1))
+            _directed_face(bm, [open_br, rb, frb, F(open_br)], (0, 0, -1))
+        if bottom:
+            _plane_face(bm, [flb, frb, F(open_br), F(open_bl)])
+            _directed_face(bm, [lb, rb, frb, flb], (0, 0, -1))
+            _directed_face(bm, [open_bl, open_br, F(open_br), F(open_bl)], (0, 0, 1))
+    _directed_face(bm, [open_bl, spring_l, F(spring_l), F(open_bl)], (1, 0, 0))
+    _directed_face(bm, [spring_r, open_br, F(open_br), F(spring_r)], (-1, 0, 0))
+
+
+def _extrude_frame_sill(bm, vert, depth, sill_bl, sill_br, open_bl, open_br):
+    """A sill as wide as the frame and as deep, with the posts of the frame standing on it.
+
+    Sill and frame form one body: the posts start at the bottom of the sill (`sill_bl`, `sill_br`)
+    and build its outer sides, so the sill only has a front, a bottom and the part of its top that
+    lies under the window.
+    """
+    def F(v):
+        return vert(v.co.x, v.co.z, -depth)
+
+    _plane_face(bm, [F(sill_bl), F(sill_br), F(open_br), F(open_bl)])
+    _directed_face(bm, [sill_bl, sill_br, F(sill_br), F(sill_bl)], (0, 0, -1))
+    _directed_face(bm, [open_bl, open_br, F(open_br), F(open_bl)], (0, 0, 1))
+
+
+def _extrude_frame_sill_deep(bm, vert, depth, sill_depth, sill_bl, sill_br, open_bl, open_br, head_l, head_r):
+    """A sill that sticks out further than the frame; the posts of the frame stand on it.
+
+    Side view: the frame is a thin rectangle on the wall, the sill a thicker one under it. The top
+    of the sill is the part under the window plus the strip in front of the posts. Each outer side
+    of the sill and its post is one L-shaped plane, built from two quads.
+    Returns the front vertices (left, right) of the feet of the posts.
+    """
+    def F(v):
+        return vert(v.co.x, v.co.z, -depth)
+
+    def S(v, z=None):
+        return vert(v.co.x, v.co.z if z is None else z, -sill_depth)
+
+    zt = open_bl.co.z
+    flb, frb = vert(sill_bl.co.x, zt, -depth), vert(sill_br.co.x, zt, -depth)
+    slb, srb = S(sill_bl, zt), S(sill_br, zt)
+    sbl, sbr = S(sill_bl), S(sill_br)
+    fol, fir = F(open_bl), F(open_br)
+
+    _plane_face(bm, [sbl, sbr, srb, slb])
+    _directed_face(bm, [sill_bl, sill_br, sbr, sbl], (0, 0, -1))
+    _directed_face(bm, [sill_bl, sbl, slb, flb], (-1, 0, 0))
+    _directed_face(bm, [sill_bl, flb, F(head_l), head_l], (-1, 0, 0))
+    _directed_face(bm, [sill_br, sbr, srb, frb], (1, 0, 0))
+    _directed_face(bm, [sill_br, frb, F(head_r), head_r], (1, 0, 0))
+    _directed_face(bm, [open_bl, open_br, fir, fol], (0, 0, 1))
+    _directed_face(bm, [fol, fir, srb, slb], (0, 0, 1))
+    _directed_face(bm, [flb, fol, slb], (0, 0, 1))
+    _directed_face(bm, [fir, frb, srb], (0, 0, 1))
+    return flb, frb
+
+
+def _extrude_lintel(bm, a, b, c, d, depth):
+    """The trapezoid a-b-c-d (a, b on the top of the window, c, d above) extruded out towards -Y."""
+    fa, fb, fc, fd = (bm.verts.new((v.co.x, -depth, v.co.z)) for v in (a, b, c, d))
+    height = c.co.z - b.co.z
+    flare = c.co.x - b.co.x
+    _plane_face(bm, [fa, fb, fc, fd])
+    _directed_face(bm, [a, b, fb, fa], (0, 0, -1))
+    _directed_face(bm, [d, c, fc, fd], (0, 0, 1))
+    _directed_face(bm, [a, d, fd, fa], (-height, 0, -flare))
+    _directed_face(bm, [b, c, fc, fb], (height, 0, -flare))
+
+
 def _build_opening(bm, vert, o, depth):
     cx0, cx1, cz0, cz1 = o["cell"]
     c_bl, c_br, c_tr, c_tl = vert(cx0, cz0), vert(cx1, cz0), vert(cx1, cz1), vert(cx0, cz1)
@@ -812,38 +1011,97 @@ def _build_opening(bm, vert, o, depth):
     open_floor = z0 <= EPS       # opening reaches the world floor, so the niche has no floor
     sill = o["sill"]
 
+    frame = o.get("frame")
+    deep_sill = False
+    if frame and sill:
+        # the posts of the frame stand on the sill. A sill that sticks out further than the frame is
+        # a body of its own; otherwise the two are one body and share the deeper of the two depths
+        if sill["depth"] > frame["depth"] + 0.005:
+            deep_sill = True
+        else:
+            frame = dict(frame, depth=max(frame["depth"], sill["depth"]))
+    trim = o.get("trim")
+    arch_trim = bool(trim and trim["kind"] == 'ARCH' and rise > 0)
+    lintel = trim if (trim and trim["kind"] == 'LINTEL' and rise <= 0) else None
+
     open_bl, open_br = vert(x0, z0), vert(x1, z0)
     spring_l, spring_r = vert(x0, z_spring), vert(x1, z_spring)
 
-    _plane_face(bm, [c_bl, open_bl, spring_l, c_tl])
-    _plane_face(bm, [open_br, c_br, c_tr, spring_r])
-
-    sill_bl = sill_br = None
-    if sill:
-        sill_bl, sill_br = vert(x0, sill["z_bottom"]), vert(x1, sill["z_bottom"])
-        _plane_face(bm, [c_bl, c_br, sill_br, sill_bl])
-        _plane_face(bm, [c_bl, sill_bl, open_bl])
-        _plane_face(bm, [c_br, open_br, sill_br])
-    elif not flush:
-        _plane_face(bm, [c_bl, c_br, open_br, open_bl])
-
     arch_mid = []
+    arch_row = outer = None
     if rise > 0:
         arch = _arch_points(x0, x1, z_spring, rise, o["segments"], o["pointed"])
         arch_mid = [vert(x, z) for x, z in arch[1:-1]]
         arch_row = [spring_l] + arch_mid + [spring_r]
-        n = len(arch_row) - 1
+        if frame or arch_trim:
+            outer = _offset_row(vert, arch_row, frame["width"] if frame else trim["width"])
+
+    sill_bl = sill_br = None
+    if sill:
+        wide = frame["width"] if frame else 0.0      # under a frame the sill is as wide as the frame
+        sill_bl, sill_br = vert(x0 - wide, sill["z_bottom"]), vert(x1 + wide, sill["z_bottom"])
+
+    # Posts of a frame: on a sill they start at its bottom, otherwise their feet stand on the bottom
+    # edge of the opening and the frame is a П.
+    lb = rb = head_l = head_r = None
+    if frame:
+        w = frame["width"]
+        zf = z0 - w if frame.get("bottom") else z0      # a bottom bar puts the feet of the posts below the window
+        lb, rb = (sill_bl, sill_br) if sill else (vert(x0 - w, zf), vert(x1 + w, zf))
+        head_l, head_r = (outer[0], outer[-1]) if rise > 0 else (vert(x0 - w, z_top + w), vert(x1 + w, z_top + w))
+
+    # Left and right faces
+    if frame:
+        _plane_face(bm, [c_bl, lb, head_l, c_tl])
+        _plane_face(bm, [rb, c_br, c_tr, head_r])
+    elif arch_trim:
+        _plane_face(bm, [c_bl, open_bl, spring_l, outer[0]])
+        _plane_face(bm, [outer[-1], spring_r, open_br, c_br])
+        _plane_face(bm, [c_bl, outer[0], c_tl])
+        _plane_face(bm, [outer[-1], c_br, c_tr])
+    else:
+        _plane_face(bm, [c_bl, open_bl, spring_l, c_tl])
+        _plane_face(bm, [open_br, c_br, c_tr, spring_r])
+
+    # Below the opening
+    if sill:
+        _plane_face(bm, [c_bl, c_br, sill_br, sill_bl])
+        if not frame:
+            _plane_face(bm, [c_bl, sill_bl, open_bl])
+            _plane_face(bm, [c_br, open_br, sill_br])
+    elif not flush:
+        if frame and frame.get("bottom"):
+            _plane_face(bm, [c_bl, c_br, rb, lb])
+        else:
+            _plane_face(bm, [c_bl, c_br, open_br, open_bl])
+            if frame:
+                _plane_face(bm, [c_bl, open_bl, lb])
+                _plane_face(bm, [c_br, rb, open_br])
+
+    # Above the opening
+    top_left = top_right = None
+    if rise > 0:
+        top_row = outer if outer is not None else arch_row
+        n = len(top_row) - 1
         m = n // 2
         for k in range(m):
-            _plane_face(bm, [c_tl, arch_row[k], arch_row[k + 1]])
+            _plane_face(bm, [c_tl, top_row[k], top_row[k + 1]])
         if n % 2:
-            _plane_face(bm, [c_tl, arch_row[m], arch_row[m + 1], c_tr])
+            _plane_face(bm, [c_tl, top_row[m], top_row[m + 1], c_tr])
             first_right = m + 1
         else:
-            _plane_face(bm, [c_tl, arch_row[m], c_tr])
+            _plane_face(bm, [c_tl, top_row[m], c_tr])
             first_right = m
         for k in range(first_right, n):
-            _plane_face(bm, [c_tr, arch_row[k], arch_row[k + 1]])
+            _plane_face(bm, [c_tr, top_row[k], top_row[k + 1]])
+    elif frame:
+        _plane_face(bm, [head_l, head_r, c_tr, c_tl])
+    elif lintel:
+        top_left = vert(x0 - lintel["flare"], z_top + lintel["height"])
+        top_right = vert(x1 + lintel["flare"], z_top + lintel["height"])
+        _plane_face(bm, [c_tl, spring_l, top_left])
+        _plane_face(bm, [c_tl, top_left, top_right, c_tr])
+        _plane_face(bm, [spring_r, c_tr, top_right])
     else:
         _plane_face(bm, [spring_l, spring_r, c_tr, c_tl])
 
@@ -859,8 +1117,26 @@ def _build_opening(bm, vert, o, depth):
             j = (i + 1) % len(outline)
             bm.faces.new((outline[i], outline[j], inner[j], inner[i]))
 
-    if sill:
-        _extrude_sill(bm, open_bl, open_br, sill_bl, sill_br, sill["depth"])
+    if frame:
+        window = (open_bl, open_br, spring_l, spring_r, arch_row)
+        head = (head_l, head_r, outer)
+        fd = frame["depth"]
+        if deep_sill:
+            foot = _extrude_frame_sill_deep(bm, vert, fd, sill["depth"], sill_bl, sill_br, open_bl, open_br, head_l, head_r)
+            _extrude_frame(bm, vert, fd, window, foot, head)
+        else:
+            if sill:
+                _extrude_frame_sill(bm, vert, fd, sill_bl, sill_br, open_bl, open_br)
+            foot = (vert(lb.co.x, lb.co.z, -fd), vert(rb.co.x, rb.co.z, -fd))
+            ring = bool(frame.get("bottom")) and not sill
+            _extrude_frame(bm, vert, fd, window, foot, head, wall=(lb, rb), feet=not sill and not ring, bottom=ring)
+    else:
+        if sill:
+            _extrude_sill(bm, open_bl, open_br, sill_bl, sill_br, sill["depth"])
+        if arch_trim:
+            _archivolt_band(bm, vert, arch_row, outer, trim["depth"], feet=True)
+        elif lintel:
+            _extrude_lintel(bm, spring_l, spring_r, top_right, top_left, lintel["depth"])
 
 
 def _build_slab(bm, vert, slab):

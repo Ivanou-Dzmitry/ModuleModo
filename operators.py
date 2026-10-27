@@ -107,8 +107,16 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
         default='ROUND',
     )
     arch_rise: FloatProperty(name="Arch Rise", description="Height of the arch. Round: half the opening width gives a semicircle. Pointed: higher is sharper", default=0.6, min=0.01, soft_max=3.0, unit='LENGTH')
-    arch_segments: IntProperty(name="Segments", default=4, min=2, max=32)
+    arch_segments: IntProperty(name="Segments", default=8, min=2, max=32)
 
+    frame: BoolProperty(name="Window Frame", description="Two posts and a head round the window, extruded out of the wall; over an arch the head is an arch band. Replaces the trim", default=False)
+    frame_width: FloatProperty(name="Frame Width", default=0.12, min=0.03, soft_max=0.5, unit='LENGTH')
+    frame_depth: FloatProperty(name="Frame Depth", description="How far the frame sticks out of the wall", default=0.04, min=0.02, soft_max=0.3, unit='LENGTH')
+    trim: BoolProperty(name="Window Trim", description="A trapezoid lintel over a straight top, an arch band round an arch, extruded out of the wall", default=False)
+    trim_height: FloatProperty(name="Lintel Height", default=0.35, min=0.05, soft_max=1.0, unit='LENGTH')
+    trim_flare: FloatProperty(name="Lintel Flare", description="How much wider the lintel is than the window on each side, at its top", default=0.15, min=0.0, soft_max=0.6, unit='LENGTH')
+    trim_width: FloatProperty(name="Arch Band Width", default=0.2, min=0.03, soft_max=0.6, unit='LENGTH')
+    trim_depth: FloatProperty(name="Trim Depth", description="How far the trim sticks out of the wall", default=0.06, min=0.02, soft_max=0.3, unit='LENGTH')
     sill: BoolProperty(name="Window Sill", default=True)
     sill_thickness: FloatProperty(name="Thickness", default=0.08, min=0.01, soft_max=0.5, unit='LENGTH')
     sill_depth: FloatProperty(name="Depth", description="How far the sill sticks out of the wall", default=0.1, min=0.01, soft_max=0.5, unit='LENGTH')
@@ -225,6 +233,20 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
                     col.prop(self, "canopy_gap")
                 layout.prop(self, "porch_margin")
 
+            if self.opening in {'WINDOW', 'DOOR', 'CORNER', 'INNER_CORNER', 'BAY'}:
+                layout.prop(self, "frame")
+                if self.frame:
+                    col = layout.column(align=True)
+                    col.prop(self, "frame_width")
+                    col.prop(self, "frame_depth")
+                layout.prop(self, "trim")
+                if self.trim and not self.frame:
+                    col = layout.column(align=True)
+                    col.prop(self, "trim_height")
+                    col.prop(self, "trim_flare")
+                    col.prop(self, "trim_width")
+                    col.prop(self, "trim_depth")
+
             if self.opening in {'WINDOW', 'BALCONY', 'LOGGIA', 'CORNER', 'INNER_CORNER', 'BAY'}:
                 layout.prop(self, "sill")
                 if self.sill:
@@ -297,6 +319,14 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
             "parapet_height": self.parapet_height,
             "parapet_thickness": self.parapet_thickness,
             "door_step": self.door_step,
+            "frame": self.frame,
+            "frame_width": self.frame_width,
+            "frame_depth": self.frame_depth,
+            "trim": self.trim,
+            "trim_height": self.trim_height,
+            "trim_flare": self.trim_flare,
+            "trim_width": self.trim_width,
+            "trim_depth": self.trim_depth,
             "bay_width": self.bay_width,
             "bay_depth": self.bay_depth,
             "bay_splay": self.bay_splay,
