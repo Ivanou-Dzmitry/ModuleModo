@@ -32,3 +32,7 @@ The module is built the way you would model it by hand: **plane, inset, extrude*
 ![topology](topology.png)
 
 Build the installable zip with `build.ps1`.
+
+## License
+
+Free and open source under the [GNU GPL v3 or later](LICENSE) (the same family of licenses as Blender itself). You can use the modules you generate in any project, commercial ones included.
