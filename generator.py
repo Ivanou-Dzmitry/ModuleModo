@@ -167,10 +167,11 @@ def _trim_spec(o, p):
 
 
 def _keystone(o, p):
-    """Extra depth of the keystone at the top of an arch band, 0 for none."""
+    """The keystone over the crown of an arch band, None for none."""
     if not p.get("keystone") or o["rise"] <= 0:
-        return 0.0
-    return max(p.get("keystone_depth", 0.04), 0.01)
+        return None
+    return {"width": max(p.get("keystone_width", 0.2), 0.05), "height": max(p.get("keystone_height", 0.12), 0.02),
+            "depth": max(p.get("keystone_depth", 0.04), 0.01)}
 
 
 def _panel_spec(o, p):
@@ -1033,65 +1034,57 @@ def _offset_row(vert, arch_row, width):
     return outer
 
 
-def _keystone_segments(count):
-    """The segments of an arch band that form the keystone: the ones round the top of the arch."""
-    if count % 2:
-        span = 1 if count <= 5 else 3
-        first = (count - span) // 2
-    else:
-        span = 2 if count <= 10 else 4
-        first = count // 2 - span // 2
-    return range(first, first + span)
-
-
-def _archivolt_band(bm, vert, arch_row, outer, depth, feet, key=0.0):
+def _archivolt_band(bm, vert, arch_row, outer, depth, feet):
     """The band between an arch and its outer row, extruded out towards -Y. `feet` closes its two ends.
 
     The front vertices come from the shared cache, so a frame that meets the band shares them.
-    With `key` the segments at the top of the arch carry a keystone: a block that sticks out of the
-    band by another `key`.
     """
     def front(v):
         return vert(v.co.x, v.co.z, -depth)
 
-    def front_key(v):
-        return vert(v.co.x, v.co.z, -(depth + key))
-
-    count = len(arch_row) - 1
-    stone = list(_keystone_segments(count)) if key > 0 else []
-    for k in range(count):
+    for k in range(len(arch_row) - 1):
         a, b = arch_row[k].co, arch_row[k + 1].co
         e, f = outer[k].co, outer[k + 1].co
-        if k not in stone:      # the front of the segments under the keystone is the keystone's footprint
-            _plane_face(bm, [front(arch_row[k]), front(arch_row[k + 1]), front(outer[k + 1]), front(outer[k])])
+        _plane_face(bm, [front(arch_row[k]), front(arch_row[k + 1]), front(outer[k + 1]), front(outer[k])])
         _directed_face(bm, [arch_row[k], arch_row[k + 1], front(arch_row[k + 1]), front(arch_row[k])], (b.z - a.z, 0, a.x - b.x))
         _directed_face(bm, [outer[k], outer[k + 1], front(outer[k + 1]), front(outer[k])], (e.z - f.z, 0, f.x - e.x))
-    if stone:
-        _build_keystone(bm, front, front_key, arch_row, outer, stone)
     if feet:
         _directed_face(bm, [arch_row[0], outer[0], front(outer[0]), front(arch_row[0])], (0, 0, -1))
         _directed_face(bm, [arch_row[-1], outer[-1], front(outer[-1]), front(arch_row[-1])], (0, 0, -1))
 
 
-def _build_keystone(bm, front, front_key, arch_row, outer, stone):
-    """A block on the front of the band over the segments `stone`, standing out by another `key`."""
-    k0, k1 = stone[0], stone[-1] + 1
-    for k in stone:
-        a, b = arch_row[k].co, arch_row[k + 1].co
-        e, f = outer[k].co, outer[k + 1].co
-        _plane_face(bm, [front_key(arch_row[k]), front_key(arch_row[k + 1]), front_key(outer[k + 1]), front_key(outer[k])])
-        _directed_face(bm, [front(arch_row[k]), front(arch_row[k + 1]), front_key(arch_row[k + 1]), front_key(arch_row[k])],
-                       (b.z - a.z, 0, a.x - b.x))
-        _directed_face(bm, [front(outer[k]), front(outer[k + 1]), front_key(outer[k + 1]), front_key(outer[k])],
-                       (e.z - f.z, 0, f.x - e.x))
-    # the two steps at the ends of the block face away from it along the arch
-    t0 = arch_row[k0 + 1].co - arch_row[k0].co
-    t1 = arch_row[k1].co - arch_row[k1 - 1].co
-    _directed_face(bm, [front(arch_row[k0]), front(outer[k0]), front_key(outer[k0]), front_key(arch_row[k0])], (-t0.x, 0, -t0.z))
-    _directed_face(bm, [front(arch_row[k1]), front(outer[k1]), front_key(outer[k1]), front_key(arch_row[k1])], (t1.x, 0, t1.z))
+def _build_keystone(bm, o, band, outer):
+    """A keystone: a separate block, wider at the top, standing on the crown of an arch band.
+
+    It lies on the wall plane with its back open and shares no vertices with the wall or the band. Its bottom is level with the top of the arch, its top is above the outer edge of the band,
+    and its sides lean the way the sides of a wedge in the arch do (towards the centre of the arch).
+    """
+    key = band["key"]
+    z_bottom = o["z_top"] + 0.005          # level with the arch, a hair above its crown vertex
+    z_outer = max(v.co.z for v in outer)
+    z_top = min(z_outer + key["height"], o["cell"][3] - 0.03)     # stays inside the cell of the opening
+    if z_top - z_outer < 0.02:
+        return
+    half = (o["x1"] - o["x0"]) / 2
+    radius = (half * half + o["rise"] * o["rise"]) / (2 * o["rise"])
+    z_center = z_bottom - radius
+    flare = _clamp((z_top - z_center) / max(z_bottom - z_center, 1e-6), 1.0, 2.0)
+    xc = (o["x0"] + o["x1"]) / 2
+    bw, tw = key["width"] / 2, key["width"] * flare / 2
+    front = band["depth"] + key["depth"]
+
+    def box(y):
+        return [bm.verts.new((x, y, z)) for x, z in ((xc - bw, z_bottom), (xc + bw, z_bottom), (xc + tw, z_top), (xc - tw, z_top))]
+
+    back, near = box(0.0), box(-front)
+    _plane_face(bm, near)          # no back face: it would lie on the wall plane and is never seen
+    inside = Vector((xc, -front / 2, (z_bottom + z_top) / 2))
+    for i in range(4):
+        j = (i + 1) % 4
+        _oriented_face(bm, [back[i], back[j], near[j], near[i]], inside)
 
 
-def _extrude_frame(bm, vert, depth, window, foot, head, wall=None, feet=False, bottom=False, key=0.0):
+def _extrude_frame(bm, vert, depth, window, foot, head, wall=None, feet=False, bottom=False):
     """A frame: two posts and a head round a window, extruded out towards -Y.
 
     `window` is (open_bl, open_br, spring_l, spring_r, arch_row or None), `foot` is the front
@@ -1111,7 +1104,7 @@ def _extrude_frame(bm, vert, depth, window, foot, head, wall=None, feet=False, b
 
     if arch_row:
         _plane_face(bm, [flb, F(open_bl), F(spring_l), F(outer[0])])
-        _archivolt_band(bm, vert, arch_row, outer, depth, feet=False, key=key)
+        _archivolt_band(bm, vert, arch_row, outer, depth, feet=False)
         _plane_face(bm, [F(open_br), frb, F(outer[-1]), F(spring_r)])
     else:
         _plane_face(bm, [flb, F(open_bl), F(spring_l), F(head_l)])
@@ -1458,22 +1451,24 @@ def _build_opening(bm, vert, o, depth):
         fd = frame["depth"]
         if deep_sill:
             foot = _extrude_frame_sill_deep(bm, vert, fd, sill["depth"], sill_bl, sill_br, open_bl, open_br, head_l, head_r)
-            _extrude_frame(bm, vert, fd, window, foot, head, key=frame.get("key", 0.0))
+            _extrude_frame(bm, vert, fd, window, foot, head)
         else:
             if sill:
                 _extrude_frame_sill(bm, vert, fd, sill_bl, sill_br, open_bl, open_br)
             foot = (vert(lb.co.x, lb.co.z, -fd), vert(rb.co.x, rb.co.z, -fd))
             ring = bool(frame.get("bottom")) and not sill
-            _extrude_frame(bm, vert, fd, window, foot, head, wall=(lb, rb), feet=not sill and not ring, bottom=ring,
-                           key=frame.get("key", 0.0))
+            _extrude_frame(bm, vert, fd, window, foot, head, wall=(lb, rb), feet=not sill and not ring, bottom=ring)
     else:
         if sill:
             _extrude_sill(bm, open_bl, open_br, sill_bl, sill_br, sill["depth"])
         if arch_trim:
-            _archivolt_band(bm, vert, arch_row, outer, trim["depth"], feet=True, key=trim.get("key", 0.0))
+            _archivolt_band(bm, vert, arch_row, outer, trim["depth"], feet=True)
         elif lintel:
             _extrude_lintel(bm, spring_l, spring_r, top_right, top_left, lintel["depth"],
                             apex=apex if lintel["pediment"] else None)
+    band = frame or trim
+    if rise > 0 and band and band.get("key"):
+        _build_keystone(bm, o, band, outer)
 
 
 def _build_slab(bm, vert, slab):

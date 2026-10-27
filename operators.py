@@ -112,7 +112,9 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
     shutters: BoolProperty(name="Shutters", description="Two plates on the wall beside the window; over an arch they follow the arch. They are separate meshes lying on the wall, not part of it", default=False)
     shutter_depth: FloatProperty(name="Shutter Depth", description="How far the shutters stick out of the wall", default=0.03, min=0.01, soft_max=0.2, unit='LENGTH')
     pediment: BoolProperty(name="Pediment", description="A triangular gable over a straight top instead of the trapezoid lintel", default=False)
-    keystone: BoolProperty(name="Keystone", description="A block at the top of the arch band (or of the frame over an arch) that sticks out further than the band", default=False)
+    keystone: BoolProperty(name="Keystone", description="A wedge-shaped block on the crown of the arch band (or of the frame over an arch), wider at the top and higher than the band. A separate piece, not stitched to the band", default=False)
+    keystone_width: FloatProperty(name="Keystone Width", description="Width of the bottom of the keystone", default=0.2, min=0.05, soft_max=0.6, unit='LENGTH')
+    keystone_height: FloatProperty(name="Keystone Height", description="How far the keystone rises above the outer edge of the band", default=0.12, min=0.02, soft_max=0.4, unit='LENGTH')
     keystone_depth: FloatProperty(name="Keystone Depth", description="How far the keystone sticks out of the band", default=0.04, min=0.01, soft_max=0.2, unit='LENGTH')
     panel: BoolProperty(name="Panel under Window", description="A rectangle of the wall pushed out (or in) under the window", default=False)
     panel_height: FloatProperty(name="Panel Height", default=0.5, min=0.1, soft_max=1.5, unit='LENGTH')
@@ -276,7 +278,10 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
                 if self.arch and (self.trim or self.frame):
                     layout.prop(self, "keystone")
                     if self.keystone:
-                        layout.prop(self, "keystone_depth", slider=True)
+                        col = layout.column(align=True)
+                        col.prop(self, "keystone_width", slider=True)
+                        col.prop(self, "keystone_height", slider=True)
+                        col.prop(self, "keystone_depth", slider=True)
 
             if self.opening == 'WINDOW':
                 layout.prop(self, "shutters")
@@ -381,6 +386,8 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
             "shutter_depth": self.shutter_depth,
             "pediment": self.pediment,
             "keystone": self.keystone,
+            "keystone_width": self.keystone_width,
+            "keystone_height": self.keystone_height,
             "keystone_depth": self.keystone_depth,
             "panel": self.panel,
             "panel_height": self.panel_height,
