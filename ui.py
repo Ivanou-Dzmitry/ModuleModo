@@ -21,7 +21,7 @@ ADDON_VERSION = _read_version()
 _WINDOW = {"opening": 'WINDOW', "arch": False, "arch_type": 'ROUND', "sill": True, "count": 1, "direction": 'HORIZONTAL', "offset_x": 0.0,
            "open_width": 1.2, "open_height": 1.4, "sill_height": 0.9, "gap": 0.5,
            "door_width": 0.9, "door_height": 2.1, "door_step": 0.1, "flip": False, "slab": True,
-           "frame": False, "trim": False, "pediment": False, "keystone": False, "panel": False, "belt": False,
+           "frame": False, "trim": False, "pediment": False, "shutters": False, "keystone": False, "panel": False, "belt": False,
            "pilasters": 'NONE', "corner_walls": 'BOTH', "bay_width": 2.6, "bay_depth": 0.8, "bay_splay": 0.5, "bay_floor": 0.6, "bay_height": 2.0,
            "bay_side_windows": True, "bay_full": False, "loggia_content": 'BOTH', "base": False, "base_height": 0.3, "base_depth": 0.15,
            "cornice": False, "cornice_height": 0.3, "cornice_depth": 0.25}
@@ -34,7 +34,7 @@ _BALCONY = {**_WINDOW, "opening": 'BALCONY', "door_width": 0.9, "door_height": 2
 
 # Entrance: doors on a threshold, an optional porch slab (stands on the ground) and an optional canopy.
 _ENTRANCE = {**_WINDOW, "opening": 'ENTRANCE', "door_width": 1.0, "door_height": 2.1, "door_step": 0.1, "gap": 0.3,
-             "porch": True, "porch_thickness": 0.2, "porch_depth": 1.5, "porch_margin": 0.0,
+             "porch": True, "porch_thickness": 0.2, "porch_depth": 1.5, "porch_margin": 0.1,
              "canopy": False, "canopy_thickness": 0.15, "canopy_depth": 1.0, "canopy_gap": 0.3}
 
 # Every button sets the full layout, so a button never inherits sizes from the previous one.
@@ -69,6 +69,11 @@ PRESETS = (
     ("Window + Panel", {**_WINDOW, "panel": True}),
     ("Window Wall + Belt Course", {**_WINDOW, "belt": True}),
     ("Window Wall + Pilasters", {**_WINDOW, "pilasters": 'BOTH'}),
+    ("Window + Shutters", {**_WINDOW, "shutters": True}),
+    ("Arched Window + Shutters", {**_WINDOW, "shutters": True, "arch": True, "arch_rise": 0.6, "arch_segments": 8,
+                                  "open_height": 1.6}),
+    ("Pointed Window + Shutters", {**_WINDOW, "shutters": True, "arch": True, "arch_type": 'POINTED', "open_width": 0.8,
+                                   "open_height": 2.0, "arch_rise": 0.9, "arch_segments": 8, "sill_height": 0.7}),
     ("Pointed Window", {**_WINDOW, "arch": True, "arch_type": 'POINTED', "open_width": 0.8, "open_height": 2.0,
                         "arch_rise": 0.9, "arch_segments": 8, "sill_height": 0.7}),
     ("Door Wall", {**_WINDOW, "opening": 'DOOR', "open_width": 0.9, "open_height": 2.1, "sill": False}),
@@ -96,6 +101,8 @@ SECTIONS = (
                   ("Arch Band", "Arched Window + Archivolt"))),
         (None, (("Arch Band + Keystone", "Arched Window + Keystone"),)),
         ("Frame", (("Straight", "Window + Frame"), ("Arched", "Arched Window + Frame"))),
+        ("Shutters", (("Straight", "Window + Shutters"), ("Round", "Arched Window + Shutters"),
+                      ("Pointed", "Pointed Window + Shutters"))),
         (None, (("Window + Panel under It", "Window + Panel"),)),
         (None, (("Pointed Window", "Pointed Window"),)),
         (None, (("Window + Plinth + Cornice", "Window Wall + Plinth + Cornice"),)),

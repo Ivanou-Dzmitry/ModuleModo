@@ -102,6 +102,7 @@ def resolve_params(p):
         opening["frame"] = _frame_spec(opening, p)
         opening["trim"] = None if opening["frame"] else _trim_spec(opening, p)
         opening["panel"] = _panel_spec(opening, p)
+        opening["shutters"] = _shutter_spec(opening, p)
 
     out["depth"] = max(p["depth"], 0.0)
     return out
@@ -202,6 +203,27 @@ def _panel_spec(o, p):
     return {"x0": x0, "x1": x1, "z0": top - height, "z1": top, "depth": depth}
 
 
+MIN_EDGE_MARGIN = 0.1     # slabs stop this far from the module edge, so the edge keeps only its corners
+
+
+def _edge_strip(plain, corner_x, inner_x, zs, height):
+    """Faces of the plain wall strip along a module edge.
+
+    The edge itself keeps only its two corner vertices, so modules can be welded side by side.
+    `zs` are the heights of the vertices on the inner line of the strip. The longest stretch of that
+    line gets one long quad between the two corners, the shorter stretches get a fan of triangles
+    from the nearer corner, so there is no long thin triangle.
+    """
+    low, high = (corner_x, 0.0), (corner_x, height)
+    inner = [(inner_x, z) for z in zs]
+    longest = max(range(len(inner) - 1), key=lambda i: inner[i + 1][1] - inner[i][1])
+    for i in range(longest):
+        plain.append([low, inner[i + 1], inner[i]])
+    plain.append([low, inner[longest], inner[longest + 1], high])
+    for i in range(longest + 1, len(inner) - 1):
+        plain.append([high, inner[i], inner[i + 1]])
+
+
 def _resolve_entrance(p, out):
     """Door(s) with an optional porch slab at the bottom and an optional canopy slab on top.
 
@@ -210,7 +232,7 @@ def _resolve_entrance(p, out):
     """
     width, height = out["width"], out["height"]
     count = int(_clamp(p["count"], 1, 3))
-    margin = _clamp(p["porch_margin"], 0.0, width / 4)
+    margin = _clamp(p["porch_margin"], MIN_EDGE_MARGIN, width / 4)
     sx0, sx1 = margin, width - margin
 
     porch_top = _clamp(p["porch_thickness"], 0.02, height / 4) if p["porch"] else 0.0
@@ -251,18 +273,18 @@ def _resolve_entrance(p, out):
         })
 
     rows = sorted({round(z, 5) for z in (0.0, porch_top, cell_top, canopy_top, height) if z <= height + EPS})
-    if margin > EPS:
-        # Side strips: a fan from the bottom wall corner to the vertices on the slab end line.
-        for corner_x, inner_x in ((0.0, sx0), (width, sx1)):
-            corner, top = (corner_x, 0.0), (corner_x, height)
-            inner = [(inner_x, z) for z in rows]
-            for a, b in zip(inner[:-2], inner[1:-1]):
-                out["plain"].append([corner, a, b])
-            out["plain"].append([corner, inner[-2], inner[-1], top])
+    # Above the canopy the wall is one face that reaches out to the two top corners of the module.
+    above = bool(p["canopy"]) and canopy_top < height - EPS
+    strip_rows = rows[:-1] if above else rows
+    for corner_x, inner_x in ((0.0, sx0), (width, sx1)):
+        _edge_strip(out["plain"], corner_x, inner_x, strip_rows, height)
 
-    if p["canopy"] and canopy_top < height - EPS:
-        for lo, hi in zip(xs_cells, xs_cells[1:]):
-            out["plain"].append([(lo, canopy_top), (hi, canopy_top), (hi, height), (lo, height)])
+    if above:
+        last = len(xs_cells) - 2
+        for i, (lo, hi) in enumerate(zip(xs_cells, xs_cells[1:])):
+            top_lo = 0.0 if i == 0 else lo
+            top_hi = width if i == last else hi
+            out["plain"].append([(lo, canopy_top), (hi, canopy_top), (top_hi, height), (top_lo, height)])
 
     if p["porch"]:
         xs = {round(x, 5) for x in xs_cells}
@@ -360,7 +382,7 @@ def _resolve_balcony(p, out):
     sx0, sx1 = 0.0, width
     z_bottom = z_top_slab = base_z = 0.0
     if slab_on:
-        margin = _clamp(p["slab_margin"], 0.0, width / 4)
+        margin = _clamp(p["slab_margin"], MIN_EDGE_MARGIN, width / 4)
         sx0, sx1 = margin, width - margin
         z_bottom = _clamp(p["slab_offset"], 0.0, height / 4)
         z_top_slab = z_bottom + _clamp(p["slab_thickness"], 0.02, height / 4)
@@ -421,16 +443,12 @@ def _resolve_balcony(p, out):
     if slab_on:
         rows = sorted({round(z, 5) for z in (0.0, z_bottom, z_top_slab, height)})
         if sx0 > EPS:
-            # Side strips: no vertices on the outer wall edge, only a fan from the bottom wall corner
-            # to the vertices on the slab's end line.
+            # Side strips: no vertices on the outer wall edge but its two corners.
+            # With a strip under the slab the floor vertex of the slab end line is dropped:
+            # that strip runs out to the wall corner instead.
+            zs = [z for z in rows if z > EPS or z_bottom <= EPS]
             for corner_x, inner_x in ((0.0, sx0), (width, sx1)):
-                corner, top = (corner_x, 0.0), (corner_x, height)
-                # With a strip under the slab the floor vertex of the slab end line is dropped:
-                # that strip runs out to the wall corner instead.
-                inner = [(inner_x, z) for z in rows if z > EPS or z_bottom <= EPS]
-                for a, b in zip(inner[:-2], inner[1:-1]):
-                    out["plain"].append([corner, a, b])
-                out["plain"].append([corner, inner[-2], inner[-1], top])
+                _edge_strip(out["plain"], corner_x, inner_x, zs, height)
         # Vertices on the slab's top edge: the cell cut plus every opening that sits on the slab,
         # so the slab and the wall above share all their vertices (no T-junctions).
         xs = {round(sx0, 5), round(cut, 5), round(sx1, 5)}
@@ -610,10 +628,23 @@ def _build_bay(bm, p):
     """
     width, height = p["width"], p["height"]
     full = p.get("bay_full", False)
-    bay_w = width if full else _clamp(p["bay_width"], 0.8, width - 0.2)
+    # The sill, frame and trim of the side windows stick out sideways: keep them off the module edge,
+    # which must hold only its corner vertices.
+    reach = 0.0
+    if not full:
+        if p.get("sill"):
+            reach = max(reach, p["sill_depth"])
+        if p.get("frame"):
+            reach = max(reach, p.get("frame_depth", 0.04))
+        if p.get("trim"):
+            reach = max(reach, p.get("trim_depth", 0.06))
+        if p.get("panel"):
+            reach = max(reach, p.get("panel_depth", 0.03))
+    edge = MIN_EDGE_MARGIN + reach
+    bay_w = width if full else _clamp(p["bay_width"], 0.8, width - 2 * edge)
     depth = max(p["bay_depth"], 0.2)
     splay = _clamp(p["bay_splay"], 0.0, max(0.0, min(depth * 2, bay_w / 2 - 0.3)))
-    xl = 0.0 if full else _clamp(width / 2 + p["offset_x"] - bay_w / 2, 0.1, width - 0.1 - bay_w)
+    xl = 0.0 if full else _clamp(width / 2 + p["offset_x"] - bay_w / 2, edge, width - edge - bay_w)
     xr = xl + bay_w
     z0 = 0.0 if full else _clamp(p["bay_floor"], 0.1, height / 2)
     bay_h = height if full else _clamp(p["bay_height"], 0.8, height - z0 - 0.1)
@@ -1192,6 +1223,110 @@ def _wall_below(bm, vert, quad, panel):
     _directed_face(bm, [p_br, p_tr, f_tr, f_br], (s, 0, 0))
     _directed_face(bm, [p_tl, p_tr, f_tr, f_tl], (0, 0, s))
     _directed_face(bm, [p_bl, p_br, f_br, f_bl], (0, 0, -s))
+
+
+def _shutter_spec(o, p):
+    """Shutters beside a window: two plates that lie on the wall, one on each side.
+
+    They are not part of the wall mesh (they share no vertices with it): each is a plate whose
+    back sits on the wall plane. Over an arch the top of a plate follows the arch. It is half of the
+    arch swung open about the jamb, so it rises away from the window.
+    """
+    if not p.get("shutters") or p["opening"] == 'DOOR':
+        return None
+    cx0, cx1, cz0, cz1 = o["cell"]
+    reach = 0.0
+    if o.get("frame"):
+        reach = o["frame"]["width"]
+    elif o.get("trim") and o["trim"]["kind"] == 'ARCH':
+        reach = o["trim"]["width"]
+    gap = 0.03 + reach
+    width = min((o["x1"] - o["x0"]) / 2, o["x0"] - gap - cx0 - 0.03, cx1 - o["x1"] - gap - 0.03)
+    if width < 0.1:
+        return None
+    return {"gap": gap, "width": width, "depth": max(p.get("shutter_depth", 0.03), 0.01)}
+
+
+def _build_shutter(bm, o, spec, sign):
+    """One shutter plate (sign -1: left of the window, +1: right), built round its hinge.
+
+    The origin of the plate is on the hinge axis, at the bottom of the window, so that rotating the
+    object about Z opens and closes it. Coordinates are (d, z): d is the distance from the window
+    jamb, away from the window. Returns the X of the hinge.
+    """
+    x0, x1, z0, z_top, rise = o["x0"], o["x1"], o["z0"], o["z_top"], o["rise"]
+    near, depth = spec["gap"], spec["depth"]
+    far = near + spec["width"]
+    z_spring = z_top - rise
+
+    dome = []                                   # the arch from the jamb (low) to the free edge (high)
+    if rise > 0:
+        points = _arch_points(x0, x1, z_spring, rise, o["segments"], o["pointed"])
+        half = points[:(len(points) - 1) // 2 + 1]
+        scale = spec["width"] / (half[-1][0] - x0)
+        dome = [(near + (px - x0) * scale, pz) for px, pz in half]
+    else:
+        z_spring = z_top
+
+    back, front = {}, {}
+
+    def vb(pt):
+        if pt not in back:
+            back[pt] = bm.verts.new((sign * (pt[0] - near), 0.0, pt[1] - z0))
+        return back[pt]
+
+    def vf(pt):
+        if pt not in front:
+            front[pt] = bm.verts.new((sign * (pt[0] - near), -depth, pt[1] - z0))
+        return front[pt]
+
+    b0, b1 = (near, z0), (far, z0)
+    s_far, s_near = (far, z_spring), (near, z_spring)
+    # front: the part up to the spring line is one quad; the dome above it is a fan from its far corner
+    _plane_face(bm, [vf(b0), vf(b1), vf(s_far), vf(s_near)])
+    for a, b in zip(dome, dome[1:]):
+        _plane_face(bm, [vf(s_far), vf(a), vf(b)])
+    # the back, on the wall plane: the plate is a closed solid, so it can be swung open or shut
+    _directed_face(bm, [vb(b0), vb(b1), vb(s_far), vb(s_near)], (0, 1, 0))
+    for a, b in zip(dome, dome[1:]):
+        _directed_face(bm, [vb(s_far), vb(a), vb(b)], (0, 1, 0))
+    # the outline, round the plate: bottom, free edge, down the arch to the jamb
+    ring = [b0, b1, s_far] + (dome[::-1] if dome else [(far, z_top), (near, z_top)])
+    ring = [pt for i, pt in enumerate(ring) if pt not in ring[:i]]
+    inside = Vector((sign * (far - near) / 2, -depth / 2, (z_top - z0) / 2))
+    for a, b in zip(ring, ring[1:] + ring[:1]):
+        _oriented_face(bm, [vb(a), vb(b), vf(b), vf(a)], inside)
+    return x0 - near if sign < 0 else x1 + near
+
+
+def build_shutters(p):
+    """Shutters of a window wall as separate meshes: [{"name", "bm", "origin"}], origin in module space.
+
+    They are not stitched into the wall: each plate is a closed solid that lies on the wall plane
+    with its own origin on the hinge axis, ready to be rotated open or shut. Only straight window
+    modules have them.
+    """
+    if not p.get("shutters") or p["opening"] != 'WINDOW':
+        return []
+    base_h, cornice_h = _band_heights(p)
+    left, right, _ = _pilasters(p, base_h, cornice_h)
+    belt_h, strip_h = (0.0, 0.0) if (left or right) else _belt_heights(p, base_h, cornice_h)
+    inner_p = p
+    if base_h or cornice_h or belt_h:
+        inner_p = dict(p, height=p["height"] - base_h - cornice_h - belt_h - strip_h)
+    if left or right:
+        inner_p = dict(inner_p, width=p["width"] - left - right)
+    parts = []
+    for i, o in enumerate(resolve_params(inner_p)["openings"]):
+        spec = o.get("shutters")
+        if not spec:
+            continue
+        for sign, side in ((-1, "L"), (1, "R")):
+            bm = bmesh.new()
+            hinge = _build_shutter(bm, o, spec, sign)
+            _face_plus_y(bm)
+            parts.append({"name": "Shutter_%s%d" % (side, i + 1), "bm": bm, "origin": (hinge + left, 0.0, o["z0"] + base_h)})
+    return parts
 
 
 def _build_opening(bm, vert, o, depth):

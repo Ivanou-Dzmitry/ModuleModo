@@ -74,7 +74,7 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
     porch: BoolProperty(name="Porch Slab", description="Slab in front of the doors, standing on the ground", default=True)
     porch_thickness: FloatProperty(name="Thickness", default=0.2, min=0.02, soft_max=0.6, unit='LENGTH')
     porch_depth: FloatProperty(name="Depth", description="How far the porch sticks out of the wall", default=1.5, min=0.05, soft_max=5.0, unit='LENGTH')
-    porch_margin: FloatProperty(name="Side Margin", description="Plain wall left and right of the porch and canopy; 0 spans the whole module", default=0.0, min=0.0, soft_max=1.0, unit='LENGTH')
+    porch_margin: FloatProperty(name="Side Margin", description="Plain wall left and right of the porch and canopy, at least 0.1 so that neighbouring modules weld together", default=0.1, min=0.1, soft_max=1.0, unit='LENGTH')
     canopy: BoolProperty(name="Canopy", description="Slab above the doors", default=False)
     canopy_thickness: FloatProperty(name="Thickness", default=0.15, min=0.02, soft_max=0.6, unit='LENGTH')
     canopy_depth: FloatProperty(name="Depth", description="How far the canopy sticks out of the wall", default=1.0, min=0.05, soft_max=4.0, unit='LENGTH')
@@ -109,6 +109,8 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
     arch_rise: FloatProperty(name="Arch Rise", description="Height of the arch. Round: half the opening width gives a semicircle. Pointed: higher is sharper", default=0.6, min=0.01, soft_max=3.0, unit='LENGTH')
     arch_segments: IntProperty(name="Segments", default=8, min=2, max=32)
 
+    shutters: BoolProperty(name="Shutters", description="Two plates on the wall beside the window; over an arch they follow the arch. They are separate meshes lying on the wall, not part of it", default=False)
+    shutter_depth: FloatProperty(name="Shutter Depth", description="How far the shutters stick out of the wall", default=0.03, min=0.01, soft_max=0.2, unit='LENGTH')
     pediment: BoolProperty(name="Pediment", description="A triangular gable over a straight top instead of the trapezoid lintel", default=False)
     keystone: BoolProperty(name="Keystone", description="A block at the top of the arch band (or of the frame over an arch) that sticks out further than the band", default=False)
     keystone_depth: FloatProperty(name="Keystone Depth", description="How far the keystone sticks out of the band", default=0.04, min=0.01, soft_max=0.2, unit='LENGTH')
@@ -147,7 +149,7 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
     slab: BoolProperty(name="Balcony Slab", description="Slab under the door and window; the door stands on it", default=True)
     slab_thickness: FloatProperty(name="Thickness", default=0.2, min=0.02, soft_max=0.6, unit='LENGTH')
     slab_depth: FloatProperty(name="Depth", description="How far the slab sticks out of the wall", default=1.2, min=0.05, soft_max=4.0, unit='LENGTH')
-    slab_margin: FloatProperty(name="Side Margin", description="Plain wall left and right of the slab", default=0.15, min=0.0, soft_max=1.0, unit='LENGTH')
+    slab_margin: FloatProperty(name="Side Margin", description="Plain wall left and right of the slab, at least 0.1 so that neighbouring modules weld together", default=0.15, min=0.1, soft_max=1.0, unit='LENGTH')
     slab_offset: FloatProperty(name="Bottom Offset", description="Wall strip below the slab", default=0.1, min=0.0, soft_max=1.0, unit='LENGTH')
 
     base: BoolProperty(name="Plinth", description="Rectangular band along the bottom of the module, sticking out of the wall", default=False)
@@ -276,6 +278,11 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
                     if self.keystone:
                         layout.prop(self, "keystone_depth", slider=True)
 
+            if self.opening == 'WINDOW':
+                layout.prop(self, "shutters")
+                if self.shutters:
+                    layout.prop(self, "shutter_depth", slider=True)
+
             if self.opening in {'WINDOW', 'CORNER', 'INNER_CORNER', 'BAY'}:
                 layout.prop(self, "panel")
                 if self.panel:
@@ -370,6 +377,8 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
             "parapet_height": self.parapet_height,
             "parapet_thickness": self.parapet_thickness,
             "door_step": self.door_step,
+            "shutters": self.shutters,
+            "shutter_depth": self.shutter_depth,
             "pediment": self.pediment,
             "keystone": self.keystone,
             "keystone_depth": self.keystone_depth,
@@ -439,9 +448,35 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
             bpy.ops.object.shade_smooth_by_angle(angle=self.smooth_angle, keep_sharp_edges=False)
         if self.uvs:
             self.unwrap()
+        self.add_shutters(context, params)
         if was_editing:
             bpy.ops.object.mode_set(mode='EDIT')
         return {'FINISHED'}
+
+    def add_shutters(self, context, params):
+        """The shutters are separate objects, children of the module, with their origin on the hinge."""
+        module = context.object
+        parts = generator.build_shutters(params)
+        for part in parts:
+            mesh = bpy.data.meshes.new(part["name"])
+            part["bm"].to_mesh(mesh)
+            part["bm"].free()
+            obj = bpy.data.objects.new(part["name"], mesh)
+            context.collection.objects.link(obj)
+            obj.parent = module
+            x, y, z = part["origin"]
+            obj.location = (x - self.width / 2 if self.pivot == 'CENTER' else x, y, z)
+            bpy.ops.object.select_all(action='DESELECT')
+            obj.select_set(True)
+            context.view_layer.objects.active = obj
+            if self.smooth:
+                bpy.ops.object.shade_smooth_by_angle(angle=self.smooth_angle, keep_sharp_edges=False)
+            if self.uvs:
+                self.unwrap()
+        if parts:
+            bpy.ops.object.select_all(action='DESELECT')
+            module.select_set(True)
+            context.view_layer.objects.active = module
 
     def unwrap(self):
         """Same recipe as Auto UV in TechArt Tools: cube projection, then pack without rotation."""
