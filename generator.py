@@ -101,6 +101,7 @@ def resolve_params(p):
     for opening in out["openings"]:
         opening["frame"] = _frame_spec(opening, p)
         opening["trim"] = None if opening["frame"] else _trim_spec(opening, p)
+        opening["panel"] = _panel_spec(opening, p)
 
     out["depth"] = max(p["depth"], 0.0)
     return out
@@ -127,7 +128,8 @@ def _frame_spec(o, p):
         width = min(width, o["z0"] - cz0 - 0.05)
     if width < 0.03:
         return None
-    return {"width": width, "depth": max(p.get("frame_depth", 0.04), 0.02), "bottom": bottom}
+    return {"width": width, "depth": max(p.get("frame_depth", 0.04), 0.02), "bottom": bottom,
+            "key": _keystone(o, p)}
 
 
 def _trim_spec(o, p):
@@ -147,17 +149,57 @@ def _trim_spec(o, p):
         width = min(p.get("trim_width", 0.2), room_x, room_up / (1.7 if o["pointed"] else 1.05))
         if width < 0.03:
             return None
-        return {"kind": 'ARCH', "width": width, "depth": depth}
+        return {"kind": 'ARCH', "width": width, "depth": depth, "key": _keystone(o, p)}
     height = min(p.get("trim_height", 0.35), room_up)
     if height < 0.05:
         return None
+    # A pediment is a gable on short sides; its top corners are lower than the apex.
+    pediment = bool(p.get("pediment"))
+    side = height * 0.3 if pediment else height
     # The top corners of the lintel must stay inside the face above the opening, that is on the inner
     # side of the diagonals that run from the cell corners to the corners of the opening.
-    t = (cz1 - o["z_top"] - height) / (cz1 - o["z_top"])
+    t = (cz1 - o["z_top"] - side) / (cz1 - o["z_top"])
     left_limit = o["x0"] - (cx0 + t * (o["x0"] - cx0)) - 0.03
     right_limit = (cx1 - t * (cx1 - o["x1"])) - o["x1"] - 0.03
     flare = _clamp(p.get("trim_flare", 0.15), 0.0, max(min(left_limit, right_limit, room_x), 0.0))
-    return {"kind": 'LINTEL', "height": height, "flare": flare, "depth": depth}
+    return {"kind": 'LINTEL', "height": height, "side": side, "pediment": pediment, "flare": flare, "depth": depth}
+
+
+def _keystone(o, p):
+    """Extra depth of the keystone at the top of an arch band, 0 for none."""
+    if not p.get("keystone") or o["rise"] <= 0:
+        return 0.0
+    return max(p.get("keystone_depth", 0.04), 0.01)
+
+
+def _panel_spec(o, p):
+    """A panel under the opening: a rectangle of the wall pushed out (or in) below the sill.
+
+    It hangs from the bottom edge of whatever is under the opening (the sill, the bottom bar of a
+    frame, or the opening itself) and is inset from that edge by a small margin, so it shares no
+    vertices with the sill or the frame.
+    """
+    if not p.get("panel"):
+        return None
+    cx0, cx1, cz0, cz1 = o["cell"]
+    frame, sill = o.get("frame"), o["sill"]
+    half = frame["width"] if frame else 0.0
+    if sill:
+        base_z = sill["z_bottom"]
+    elif frame and frame["bottom"]:
+        base_z = o["z0"] - frame["width"]
+    else:
+        base_z, half = o["z0"], 0.0
+    margin = 0.06
+    x0, x1 = o["x0"] - half + margin, o["x1"] + half - margin
+    top = base_z - margin
+    height = min(p.get("panel_height", 0.5), top - cz0 - margin)
+    if x1 - x0 < 0.2 or height < 0.1:
+        return None
+    depth = _clamp(p.get("panel_depth", 0.03), -0.3, 0.3)
+    if abs(depth) < 0.01:
+        depth = 0.01
+    return {"x0": x0, "x1": x1, "z0": top - height, "z1": top, "depth": depth}
 
 
 def _resolve_entrance(p, out):
@@ -526,7 +568,13 @@ def build_module(bm, p):
 def _build_straight(bm, p):
     start_verts, start_faces = set(bm.verts), set(bm.faces)
     base_h, cornice_h = _band_heights(p)
-    inner_p = dict(p, height=p["height"] - base_h - cornice_h) if (base_h or cornice_h) else p
+    left, right, pil_depth = _pilasters(p, base_h, cornice_h)
+    belt_h, strip_h = (0.0, 0.0) if (left or right) else _belt_heights(p, base_h, cornice_h)
+    inner_p = p
+    if base_h or cornice_h or belt_h:
+        inner_p = dict(p, height=p["height"] - base_h - cornice_h - belt_h - strip_h)
+    if left or right:
+        inner_p = dict(inner_p, width=p["width"] - left - right)
     r = resolve_params(inner_p)
 
     before = set(bm.verts)
@@ -535,10 +583,13 @@ def _build_straight(bm, p):
     else:
         _build_wall(bm, r)
 
-    if base_h or cornice_h:
+    if base_h or cornice_h or belt_h or left or right:
         inner = [v for v in bm.verts if v not in before]
-        bmesh.ops.translate(bm, verts=inner, vec=Vector((0.0, 0.0, base_h)))
-        _build_bands(bm, inner, p, base_h, cornice_h)
+        bmesh.ops.translate(bm, verts=inner, vec=Vector((left, 0.0, base_h)))
+        if base_h or cornice_h or belt_h:
+            _build_bands(bm, inner, p, base_h, cornice_h, belt_h, strip_h)
+        if left or right:
+            _build_pilasters(bm, inner, p["width"], p["height"], left, right, pil_depth)
     _face_plus_y(bm, [v for v in bm.verts if v not in start_verts], [f for f in bm.faces if f not in start_faces])
 
 
@@ -687,6 +738,11 @@ def _build_corner(bm, p, inner=False):
     side_a = dict(p, opening='WINDOW', offset_x=away, mitre='FIRST_IN' if inner else 'LAST')
     side_b = dict(p, opening='WINDOW' if both else 'NONE', offset_x=-away, mitre='LAST_IN' if inner else 'FIRST')
 
+    if p.get("pilasters", 'NONE') != 'NONE':
+        # only the far ends of the two walls; the corner itself stays plain
+        side_a["pilasters"] = 'RIGHT' if inner else 'LEFT'
+        side_b["pilasters"] = 'LEFT' if inner else 'RIGHT'
+
     before = set(bm.verts)
     _build_straight(bm, side_a)
     wall_a = [v for v in bm.verts if v not in before]
@@ -714,7 +770,65 @@ def _band_heights(p):
     return base_h, cornice_h
 
 
-def _build_bands(bm, inner, p, base_h, cornice_h):
+def _belt_heights(p, base_h, cornice_h):
+    """Heights of the belt course and of the plain wall above it, kept small enough to leave room."""
+    if not p.get("belt") or p["opening"] == 'BAY':
+        return 0.0, 0.0
+    avail = p["height"] - base_h - cornice_h
+    belt_h = _clamp(p.get("belt_height", 0.12), 0.03, avail * 0.15)
+    strip_h = _clamp(p.get("belt_gap", 0.3), 0.0, avail * 0.3)
+    if cornice_h:
+        strip_h = max(strip_h, 0.05)    # the belt does not touch the cornice
+    return belt_h, strip_h
+
+
+def _pilasters(p, base_h, cornice_h):
+    """Widths of the left and right pilaster and their depth; (0, 0, 0) when there are none.
+
+    Pilasters are plain boxes at the ends of the module. They are not combined with a plinth or a
+    cornice, which would have to be cut around them.
+    """
+    mode = p.get("pilasters", 'NONE')
+    if mode == 'NONE' or p["opening"] not in {'WINDOW', 'DOOR', 'NONE'} or base_h or cornice_h:
+        return 0.0, 0.0, 0.0
+    width = p["width"]
+    w = _clamp(p.get("pilaster_width", 0.25), 0.05, width / 4)
+    left = w if mode in {'BOTH', 'LEFT'} else 0.0
+    right = w if mode in {'BOTH', 'RIGHT'} else 0.0
+    depth = max(p.get("pilaster_depth", 0.1), 0.02)
+    if width - left - right < 0.4:
+        return 0.0, 0.0, 0.0
+    return left, right, depth
+
+
+def _build_pilasters(bm, inner, width, height, left, right, depth):
+    """Boxes of the full module height at its ends, standing on the wall; they share the vertices of
+    the wall edge they stand next to, so there are no T-junctions."""
+    found = {(round(v.co.x, 5), round(v.co.z, 5)): v for v in inner if abs(v.co.y) < 1e-6}
+    cache = {}
+
+    def vert(x, z, y=0.0):
+        if y == 0.0 and (round(x, 5), round(z, 5)) in found:
+            return found[(round(x, 5), round(z, 5))]
+        key = (round(x, 5), round(y, 5), round(z, 5))
+        if key not in cache:
+            cache[key] = bm.verts.new((x, y, z))
+        return cache[key]
+
+    for x_in, x_out, size in ((left, 0.0, left), (width - right, width, right)):
+        if size <= 0:
+            continue
+        zs = sorted({z for x, z in found if abs(x - x_in) < 1e-4})
+        inside = Vector(((x_in + x_out) / 2, -depth / 2, height / 2))
+        for a, b in zip(zs, zs[1:]):
+            _plane_face(bm, [vert(x_out, a, -depth), vert(x_in, a, -depth), vert(x_in, b, -depth), vert(x_out, b, -depth)])
+            for x in (x_in, x_out):
+                _oriented_face(bm, [vert(x, a), vert(x, b), vert(x, b, -depth), vert(x, a, -depth)], inside)
+        for z in (zs[0], zs[-1]):
+            _oriented_face(bm, [vert(x_out, z), vert(x_in, z), vert(x_in, z, -depth), vert(x_out, z, -depth)], inside)
+
+
+def _build_bands(bm, inner, p, base_h, cornice_h, belt_h=0.0, strip_h=0.0):
     """Plinth and cornice: full-width rectangles extruded out of the wall plane.
 
     A band shares every vertex of the module's edge it touches, so there are no T-junctions.
@@ -752,6 +866,15 @@ def _build_bands(bm, inner, p, base_h, cornice_h):
     if base_h:
         _build_slab(bm, vert, mitred({"xs": edge_xs(base_h), "z_bottom": 0.0, "z_top": base_h,
                                       "depth": max(p["base_depth"], 0.02), "bottom": True, "ends": False}))
+    if belt_h:
+        z_bottom = height - cornice_h - strip_h - belt_h
+        xs = edge_xs(z_bottom)
+        _build_slab(bm, vert, mitred({"xs": xs, "z_bottom": z_bottom, "z_top": z_bottom + belt_h,
+                                      "depth": max(p.get("belt_depth", 0.06), 0.02), "bottom": True, "ends": False}))
+        if strip_h > 1e-4:
+            z_top = z_bottom + belt_h
+            for a, b in zip(xs, xs[1:]):
+                _plane_face(bm, [vert(a, z_top), vert(b, z_top), vert(b, z_top + strip_h), vert(a, z_top + strip_h)])
     if cornice_h:
         _build_slab(bm, vert, mitred({"xs": edge_xs(height - cornice_h), "z_bottom": height - cornice_h,
                                       "z_top": height, "depth": max(p["cornice_depth"], 0.02),
@@ -879,26 +1002,65 @@ def _offset_row(vert, arch_row, width):
     return outer
 
 
-def _archivolt_band(bm, vert, arch_row, outer, depth, feet):
+def _keystone_segments(count):
+    """The segments of an arch band that form the keystone: the ones round the top of the arch."""
+    if count % 2:
+        span = 1 if count <= 5 else 3
+        first = (count - span) // 2
+    else:
+        span = 2 if count <= 10 else 4
+        first = count // 2 - span // 2
+    return range(first, first + span)
+
+
+def _archivolt_band(bm, vert, arch_row, outer, depth, feet, key=0.0):
     """The band between an arch and its outer row, extruded out towards -Y. `feet` closes its two ends.
 
     The front vertices come from the shared cache, so a frame that meets the band shares them.
+    With `key` the segments at the top of the arch carry a keystone: a block that sticks out of the
+    band by another `key`.
     """
     def front(v):
         return vert(v.co.x, v.co.z, -depth)
 
-    for k in range(len(arch_row) - 1):
+    def front_key(v):
+        return vert(v.co.x, v.co.z, -(depth + key))
+
+    count = len(arch_row) - 1
+    stone = list(_keystone_segments(count)) if key > 0 else []
+    for k in range(count):
         a, b = arch_row[k].co, arch_row[k + 1].co
         e, f = outer[k].co, outer[k + 1].co
-        _plane_face(bm, [front(arch_row[k]), front(arch_row[k + 1]), front(outer[k + 1]), front(outer[k])])
+        if k not in stone:      # the front of the segments under the keystone is the keystone's footprint
+            _plane_face(bm, [front(arch_row[k]), front(arch_row[k + 1]), front(outer[k + 1]), front(outer[k])])
         _directed_face(bm, [arch_row[k], arch_row[k + 1], front(arch_row[k + 1]), front(arch_row[k])], (b.z - a.z, 0, a.x - b.x))
         _directed_face(bm, [outer[k], outer[k + 1], front(outer[k + 1]), front(outer[k])], (e.z - f.z, 0, f.x - e.x))
+    if stone:
+        _build_keystone(bm, front, front_key, arch_row, outer, stone)
     if feet:
         _directed_face(bm, [arch_row[0], outer[0], front(outer[0]), front(arch_row[0])], (0, 0, -1))
         _directed_face(bm, [arch_row[-1], outer[-1], front(outer[-1]), front(arch_row[-1])], (0, 0, -1))
 
 
-def _extrude_frame(bm, vert, depth, window, foot, head, wall=None, feet=False, bottom=False):
+def _build_keystone(bm, front, front_key, arch_row, outer, stone):
+    """A block on the front of the band over the segments `stone`, standing out by another `key`."""
+    k0, k1 = stone[0], stone[-1] + 1
+    for k in stone:
+        a, b = arch_row[k].co, arch_row[k + 1].co
+        e, f = outer[k].co, outer[k + 1].co
+        _plane_face(bm, [front_key(arch_row[k]), front_key(arch_row[k + 1]), front_key(outer[k + 1]), front_key(outer[k])])
+        _directed_face(bm, [front(arch_row[k]), front(arch_row[k + 1]), front_key(arch_row[k + 1]), front_key(arch_row[k])],
+                       (b.z - a.z, 0, a.x - b.x))
+        _directed_face(bm, [front(outer[k]), front(outer[k + 1]), front_key(outer[k + 1]), front_key(outer[k])],
+                       (e.z - f.z, 0, f.x - e.x))
+    # the two steps at the ends of the block face away from it along the arch
+    t0 = arch_row[k0 + 1].co - arch_row[k0].co
+    t1 = arch_row[k1].co - arch_row[k1 - 1].co
+    _directed_face(bm, [front(arch_row[k0]), front(outer[k0]), front_key(outer[k0]), front_key(arch_row[k0])], (-t0.x, 0, -t0.z))
+    _directed_face(bm, [front(arch_row[k1]), front(outer[k1]), front_key(outer[k1]), front_key(arch_row[k1])], (t1.x, 0, t1.z))
+
+
+def _extrude_frame(bm, vert, depth, window, foot, head, wall=None, feet=False, bottom=False, key=0.0):
     """A frame: two posts and a head round a window, extruded out towards -Y.
 
     `window` is (open_bl, open_br, spring_l, spring_r, arch_row or None), `foot` is the front
@@ -918,7 +1080,7 @@ def _extrude_frame(bm, vert, depth, window, foot, head, wall=None, feet=False, b
 
     if arch_row:
         _plane_face(bm, [flb, F(open_bl), F(spring_l), F(outer[0])])
-        _archivolt_band(bm, vert, arch_row, outer, depth, feet=False)
+        _archivolt_band(bm, vert, arch_row, outer, depth, feet=False, key=key)
         _plane_face(bm, [F(open_br), frb, F(outer[-1]), F(spring_r)])
     else:
         _plane_face(bm, [flb, F(open_bl), F(spring_l), F(head_l)])
@@ -989,16 +1151,47 @@ def _extrude_frame_sill_deep(bm, vert, depth, sill_depth, sill_bl, sill_br, open
     return flb, frb
 
 
-def _extrude_lintel(bm, a, b, c, d, depth):
-    """The trapezoid a-b-c-d (a, b on the top of the window, c, d above) extruded out towards -Y."""
+def _extrude_lintel(bm, a, b, c, d, depth, apex=None):
+    """The trapezoid a-b-c-d (a, b on the top of the window, c, d above) extruded out towards -Y.
+
+    With an `apex` the top is a gable: the trapezoid is topped by a triangle (a pediment).
+    """
     fa, fb, fc, fd = (bm.verts.new((v.co.x, -depth, v.co.z)) for v in (a, b, c, d))
     height = c.co.z - b.co.z
     flare = c.co.x - b.co.x
     _plane_face(bm, [fa, fb, fc, fd])
     _directed_face(bm, [a, b, fb, fa], (0, 0, -1))
-    _directed_face(bm, [d, c, fc, fd], (0, 0, 1))
+    if apex:
+        fe = bm.verts.new((apex.co.x, -depth, apex.co.z))
+        _plane_face(bm, [fd, fc, fe])
+        for p, q, fp, fq in ((d, apex, fd, fe), (apex, c, fe, fc)):
+            _directed_face(bm, [p, q, fq, fp], (p.co.z - q.co.z, 0, q.co.x - p.co.x))
+    else:
+        _directed_face(bm, [d, c, fc, fd], (0, 0, 1))
     _directed_face(bm, [a, d, fd, fa], (-height, 0, -flare))
     _directed_face(bm, [b, c, fc, fb], (height, 0, -flare))
+
+
+def _wall_below(bm, vert, quad, panel):
+    """The wall face under an opening, `quad` is [c_bl, c_br, base_r, base_l]; with a panel the face
+    becomes an inset ring of four faces round a rectangle that is pushed out (or in) as a block."""
+    c_bl, c_br, base_r, base_l = quad
+    if not panel:
+        _plane_face(bm, quad)
+        return
+    x0, x1, z0, z1, d = panel["x0"], panel["x1"], panel["z0"], panel["z1"], panel["depth"]
+    p_bl, p_br, p_tr, p_tl = vert(x0, z0), vert(x1, z0), vert(x1, z1), vert(x0, z1)
+    _plane_face(bm, [c_bl, c_br, p_br, p_bl])
+    _plane_face(bm, [c_br, base_r, p_tr, p_br])
+    _plane_face(bm, [base_r, base_l, p_tl, p_tr])
+    _plane_face(bm, [base_l, c_bl, p_bl, p_tl])
+    f_bl, f_br, f_tr, f_tl = vert(x0, z0, -d), vert(x1, z0, -d), vert(x1, z1, -d), vert(x0, z1, -d)
+    _plane_face(bm, [f_bl, f_br, f_tr, f_tl])
+    s = 1 if d > 0 else -1          # a recessed panel has its sides facing inwards
+    _directed_face(bm, [p_bl, p_tl, f_tl, f_bl], (-s, 0, 0))
+    _directed_face(bm, [p_br, p_tr, f_tr, f_br], (s, 0, 0))
+    _directed_face(bm, [p_tl, p_tr, f_tr, f_tl], (0, 0, s))
+    _directed_face(bm, [p_bl, p_br, f_br, f_bl], (0, 0, -s))
 
 
 def _build_opening(bm, vert, o, depth):
@@ -1064,16 +1257,17 @@ def _build_opening(bm, vert, o, depth):
         _plane_face(bm, [open_br, c_br, c_tr, spring_r])
 
     # Below the opening
+    panel = o.get("panel")
     if sill:
-        _plane_face(bm, [c_bl, c_br, sill_br, sill_bl])
+        _wall_below(bm, vert, [c_bl, c_br, sill_br, sill_bl], panel)
         if not frame:
             _plane_face(bm, [c_bl, sill_bl, open_bl])
             _plane_face(bm, [c_br, open_br, sill_br])
     elif not flush:
         if frame and frame.get("bottom"):
-            _plane_face(bm, [c_bl, c_br, rb, lb])
+            _wall_below(bm, vert, [c_bl, c_br, rb, lb], panel)
         else:
-            _plane_face(bm, [c_bl, c_br, open_br, open_bl])
+            _wall_below(bm, vert, [c_bl, c_br, open_br, open_bl], panel)
             if frame:
                 _plane_face(bm, [c_bl, open_bl, lb])
                 _plane_face(bm, [c_br, rb, open_br])
@@ -1097,10 +1291,16 @@ def _build_opening(bm, vert, o, depth):
     elif frame:
         _plane_face(bm, [head_l, head_r, c_tr, c_tl])
     elif lintel:
-        top_left = vert(x0 - lintel["flare"], z_top + lintel["height"])
-        top_right = vert(x1 + lintel["flare"], z_top + lintel["height"])
+        top_left = vert(x0 - lintel["flare"], z_top + lintel["side"])
+        top_right = vert(x1 + lintel["flare"], z_top + lintel["side"])
         _plane_face(bm, [c_tl, spring_l, top_left])
-        _plane_face(bm, [c_tl, top_left, top_right, c_tr])
+        if lintel["pediment"]:
+            apex = vert((x0 + x1) / 2, z_top + lintel["height"])
+            _plane_face(bm, [c_tl, top_left, apex])
+            _plane_face(bm, [c_tl, apex, c_tr])
+            _plane_face(bm, [c_tr, apex, top_right])
+        else:
+            _plane_face(bm, [c_tl, top_left, top_right, c_tr])
         _plane_face(bm, [spring_r, c_tr, top_right])
     else:
         _plane_face(bm, [spring_l, spring_r, c_tr, c_tl])
@@ -1123,20 +1323,22 @@ def _build_opening(bm, vert, o, depth):
         fd = frame["depth"]
         if deep_sill:
             foot = _extrude_frame_sill_deep(bm, vert, fd, sill["depth"], sill_bl, sill_br, open_bl, open_br, head_l, head_r)
-            _extrude_frame(bm, vert, fd, window, foot, head)
+            _extrude_frame(bm, vert, fd, window, foot, head, key=frame.get("key", 0.0))
         else:
             if sill:
                 _extrude_frame_sill(bm, vert, fd, sill_bl, sill_br, open_bl, open_br)
             foot = (vert(lb.co.x, lb.co.z, -fd), vert(rb.co.x, rb.co.z, -fd))
             ring = bool(frame.get("bottom")) and not sill
-            _extrude_frame(bm, vert, fd, window, foot, head, wall=(lb, rb), feet=not sill and not ring, bottom=ring)
+            _extrude_frame(bm, vert, fd, window, foot, head, wall=(lb, rb), feet=not sill and not ring, bottom=ring,
+                           key=frame.get("key", 0.0))
     else:
         if sill:
             _extrude_sill(bm, open_bl, open_br, sill_bl, sill_br, sill["depth"])
         if arch_trim:
-            _archivolt_band(bm, vert, arch_row, outer, trim["depth"], feet=True)
+            _archivolt_band(bm, vert, arch_row, outer, trim["depth"], feet=True, key=trim.get("key", 0.0))
         elif lintel:
-            _extrude_lintel(bm, spring_l, spring_r, top_right, top_left, lintel["depth"])
+            _extrude_lintel(bm, spring_l, spring_r, top_right, top_left, lintel["depth"],
+                            apex=apex if lintel["pediment"] else None)
 
 
 def _build_slab(bm, vert, slab):

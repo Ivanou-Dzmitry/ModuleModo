@@ -4,7 +4,7 @@ Procedural low-poly wall modules for Blender 5.2+.
 
 ![preview](preview.png)
 
-**Add > Mesh > Wall Module**, or the **ModuleModo** tab in the 3D viewport sidebar, where the 28 buttons are grouped into collapsible sections (Windows, Doors and Entrance, Corners, Bay Windows, Balcony and Loggia, Other) and related variants share a row. All parameters live in the redo panel, so they can be tweaked right after creation.
+**Add > Mesh > Wall Module**, or the **ModuleModo** tab in the 3D viewport sidebar, where the 33 buttons are grouped into collapsible sections (Windows, Doors and Entrance, Corners, Bay Windows, Balcony and Loggia, Other) and related variants share a row. All parameters live in the redo panel, so they can be tweaked right after creation.
 
 The module is built the way you would model it by hand: **plane, inset, extrude**.
 
@@ -20,6 +20,7 @@ The module is built the way you would model it by hand: **plane, inset, extrude*
 - Balcony module: door and window side by side with tops aligned, optional balcony slab under them (a thick, long sill)
 - 1 to 3 openings, side by side or stacked (windows); the wall is cut into one cell per opening, each cell gets its own inset and extrude
 - Arched top: round or pointed (gothic) arch, arch rise and segment count; the wall above the arch is a fan from the two top corners
+- Pediment (a gable over a straight top), keystone at the top of an arch band, a panel under the window, a belt course with a plain strip above it, and pilasters at the ends of the module
 - Window frame: two posts and a head round the window (an arch band over an arch), extruded out of the wall; without a sill it is a closed ring (a П for a door), with a sill the frame stands on it as a separate body
 - Window trim: a trapezoid lintel over a straight top and an arch band round round or pointed arches, extruded out of the wall
 - Window sill (optional, or use the "Window Wall (No Sill)" button): the plane rectangle under the window extruded out towards +Y (thickness, depth)

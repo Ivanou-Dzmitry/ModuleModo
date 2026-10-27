@@ -21,7 +21,8 @@ ADDON_VERSION = _read_version()
 _WINDOW = {"opening": 'WINDOW', "arch": False, "arch_type": 'ROUND', "sill": True, "count": 1, "direction": 'HORIZONTAL', "offset_x": 0.0,
            "open_width": 1.2, "open_height": 1.4, "sill_height": 0.9, "gap": 0.5,
            "door_width": 0.9, "door_height": 2.1, "door_step": 0.1, "flip": False, "slab": True,
-           "frame": False, "trim": False, "corner_walls": 'BOTH', "bay_width": 2.6, "bay_depth": 0.8, "bay_splay": 0.5, "bay_floor": 0.6, "bay_height": 2.0,
+           "frame": False, "trim": False, "pediment": False, "keystone": False, "panel": False, "belt": False,
+           "pilasters": 'NONE', "corner_walls": 'BOTH', "bay_width": 2.6, "bay_depth": 0.8, "bay_splay": 0.5, "bay_floor": 0.6, "bay_height": 2.0,
            "bay_side_windows": True, "bay_full": False, "loggia_content": 'BOTH', "base": False, "base_height": 0.3, "base_depth": 0.15,
            "cornice": False, "cornice_height": 0.3, "cornice_depth": 0.25}
 
@@ -62,6 +63,12 @@ PRESETS = (
     ("Window + Frame", {**_WINDOW, "frame": True}),
     ("Arched Window + Frame", {**_WINDOW, "frame": True, "arch": True, "arch_rise": 0.6, "arch_segments": 8,
                                "open_height": 1.6}),
+    ("Window + Pediment", {**_WINDOW, "trim": True, "pediment": True}),
+    ("Arched Window + Keystone", {**_WINDOW, "trim": True, "keystone": True, "arch": True, "arch_rise": 0.6,
+                                  "arch_segments": 8, "open_height": 1.6}),
+    ("Window + Panel", {**_WINDOW, "panel": True}),
+    ("Window Wall + Belt Course", {**_WINDOW, "belt": True}),
+    ("Window Wall + Pilasters", {**_WINDOW, "pilasters": 'BOTH'}),
     ("Pointed Window", {**_WINDOW, "arch": True, "arch_type": 'POINTED', "open_width": 0.8, "open_height": 2.0,
                         "arch_rise": 0.9, "arch_segments": 8, "sill_height": 0.7}),
     ("Door Wall", {**_WINDOW, "opening": 'DOOR', "open_width": 0.9, "open_height": 2.1, "sill": False}),
@@ -85,10 +92,14 @@ SECTIONS = (
     ("windows", "Windows", 'WINDOW', (
         ("Window", (("With Sill", "Window Wall"), ("No Sill", "Window Wall (No Sill)"))),
         ("2 Windows", (("Horizontal", "2 Windows (Horizontal)"), ("Vertical", "2 Windows (Vertical)"))),
-        ("Trim", (("Lintel", "Window + Lintel"), ("Arch Band", "Arched Window + Archivolt"))),
+        ("Trim", (("Lintel", "Window + Lintel"), ("Pediment", "Window + Pediment"),
+                  ("Arch Band", "Arched Window + Archivolt"))),
+        (None, (("Arch Band + Keystone", "Arched Window + Keystone"),)),
         ("Frame", (("Straight", "Window + Frame"), ("Arched", "Arched Window + Frame"))),
+        (None, (("Window + Panel under It", "Window + Panel"),)),
         (None, (("Pointed Window", "Pointed Window"),)),
         (None, (("Window + Plinth + Cornice", "Window Wall + Plinth + Cornice"),)),
+        ("Wall", (("Belt Course", "Window Wall + Belt Course"), ("Pilasters", "Window Wall + Pilasters"))),
     )),
     ("doors", "Doors and Entrance", 'HOME', (
         (None, (("Door", "Door Wall"),)),

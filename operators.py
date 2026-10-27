@@ -109,6 +109,29 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
     arch_rise: FloatProperty(name="Arch Rise", description="Height of the arch. Round: half the opening width gives a semicircle. Pointed: higher is sharper", default=0.6, min=0.01, soft_max=3.0, unit='LENGTH')
     arch_segments: IntProperty(name="Segments", default=8, min=2, max=32)
 
+    pediment: BoolProperty(name="Pediment", description="A triangular gable over a straight top instead of the trapezoid lintel", default=False)
+    keystone: BoolProperty(name="Keystone", description="A block at the top of the arch band (or of the frame over an arch) that sticks out further than the band", default=False)
+    keystone_depth: FloatProperty(name="Keystone Depth", description="How far the keystone sticks out of the band", default=0.04, min=0.01, soft_max=0.2, unit='LENGTH')
+    panel: BoolProperty(name="Panel under Window", description="A rectangle of the wall pushed out (or in) under the window", default=False)
+    panel_height: FloatProperty(name="Panel Height", default=0.5, min=0.1, soft_max=1.5, unit='LENGTH')
+    panel_depth: FloatProperty(name="Panel Depth", description="How far the panel sticks out of the wall; a negative value sinks it into the wall", default=0.03, min=-0.3, max=0.3, unit='LENGTH')
+    belt: BoolProperty(name="Belt Course", description="A thin band across the wall above the openings, with a plain strip of wall above it", default=False)
+    belt_height: FloatProperty(name="Belt Height", default=0.12, min=0.03, soft_max=0.5, unit='LENGTH')
+    belt_depth: FloatProperty(name="Belt Depth", description="How far the belt sticks out of the wall", default=0.06, min=0.02, soft_max=0.5, unit='LENGTH')
+    belt_gap: FloatProperty(name="Wall above Belt", description="Plain wall between the belt and the top of the module", default=0.3, min=0.0, soft_max=1.0, unit='LENGTH')
+    pilasters: EnumProperty(
+        name="Pilasters",
+        items=[
+            ('NONE', "None", "No pilasters"),
+            ('BOTH', "Both", "A pilaster at each end of the module"),
+            ('LEFT', "Left", "A pilaster at the left end only"),
+            ('RIGHT', "Right", "A pilaster at the right end only"),
+        ],
+        default='NONE',
+    )
+    pilaster_width: FloatProperty(name="Pilaster Width", default=0.25, min=0.05, soft_max=0.8, unit='LENGTH')
+    pilaster_depth: FloatProperty(name="Pilaster Depth", description="How far the pilasters stick out of the wall", default=0.1, min=0.02, soft_max=0.5, unit='LENGTH')
+
     frame: BoolProperty(name="Window Frame", description="Two posts and a head round the window, extruded out of the wall; over an arch the head is an arch band. Replaces the trim", default=False)
     frame_width: FloatProperty(name="Frame Width", default=0.12, min=0.03, soft_max=0.5, unit='LENGTH')
     frame_depth: FloatProperty(name="Frame Depth", description="How far the frame sticks out of the wall", default=0.04, min=0.02, soft_max=0.3, unit='LENGTH')
@@ -204,7 +227,7 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
             col.prop(self, "depth")
             col.prop(self, "offset_x")
             if not balcony and not entrance and not bay:
-                col.prop(self, "count")
+                col.prop(self, "count", slider=True)
                 if self.count > 1:
                     if windowed:
                         col.prop(self, "direction")
@@ -216,8 +239,8 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
             if self.arch:
                 layout.prop(self, "arch_type", expand=True)
                 col = layout.column(align=True)
-                col.prop(self, "arch_rise")
-                col.prop(self, "arch_segments")
+                col.prop(self, "arch_rise", slider=True)
+                col.prop(self, "arch_segments", slider=True)
 
             if entrance:
                 layout.prop(self, "porch")
@@ -237,22 +260,35 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
                 layout.prop(self, "frame")
                 if self.frame:
                     col = layout.column(align=True)
-                    col.prop(self, "frame_width")
-                    col.prop(self, "frame_depth")
+                    col.prop(self, "frame_width", slider=True)
+                    col.prop(self, "frame_depth", slider=True)
                 layout.prop(self, "trim")
                 if self.trim and not self.frame:
                     col = layout.column(align=True)
-                    col.prop(self, "trim_height")
-                    col.prop(self, "trim_flare")
-                    col.prop(self, "trim_width")
-                    col.prop(self, "trim_depth")
+                    col.prop(self, "trim_height", slider=True)
+                    col.prop(self, "trim_flare", slider=True)
+                    col.prop(self, "trim_width", slider=True)
+                    col.prop(self, "trim_depth", slider=True)
+                    if not self.arch:
+                        col.prop(self, "pediment")
+                if self.arch and (self.trim or self.frame):
+                    layout.prop(self, "keystone")
+                    if self.keystone:
+                        layout.prop(self, "keystone_depth", slider=True)
+
+            if self.opening in {'WINDOW', 'CORNER', 'INNER_CORNER', 'BAY'}:
+                layout.prop(self, "panel")
+                if self.panel:
+                    col = layout.column(align=True)
+                    col.prop(self, "panel_height", slider=True)
+                    col.prop(self, "panel_depth", slider=True)
 
             if self.opening in {'WINDOW', 'BALCONY', 'LOGGIA', 'CORNER', 'INNER_CORNER', 'BAY'}:
                 layout.prop(self, "sill")
                 if self.sill:
                     col = layout.column(align=True)
-                    col.prop(self, "sill_thickness")
-                    col.prop(self, "sill_depth")
+                    col.prop(self, "sill_thickness", slider=True)
+                    col.prop(self, "sill_depth", slider=True)
 
             if self.opening == 'BALCONY':
                 layout.prop(self, "slab")
@@ -269,13 +305,28 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
             layout.prop(self, "base")
             if self.base:
                 col = layout.column(align=True)
-                col.prop(self, "base_height", text="Plinth Height")
-                col.prop(self, "base_depth", text="Plinth Depth")
+                col.prop(self, "base_height", text="Plinth Height", slider=True)
+                col.prop(self, "base_depth", text="Plinth Depth", slider=True)
             layout.prop(self, "cornice")
             if self.cornice:
                 col = layout.column(align=True)
-                col.prop(self, "cornice_height", text="Cornice Height")
-                col.prop(self, "cornice_depth", text="Cornice Depth")
+                col.prop(self, "cornice_height", text="Cornice Height", slider=True)
+                col.prop(self, "cornice_depth", text="Cornice Depth", slider=True)
+        if self.opening != 'BAY':
+            layout.prop(self, "belt")
+            if self.belt:
+                col = layout.column(align=True)
+                col.prop(self, "belt_height", slider=True)
+                col.prop(self, "belt_depth", slider=True)
+                col.prop(self, "belt_gap", slider=True)
+        if self.opening in {'WINDOW', 'DOOR', 'NONE', 'CORNER', 'INNER_CORNER'}:
+            layout.prop(self, "pilasters", expand=True)
+            if self.pilasters != 'NONE':
+                col = layout.column(align=True)
+                col.prop(self, "pilaster_width", slider=True)
+                col.prop(self, "pilaster_depth", slider=True)
+                if self.base or self.cornice or self.belt:
+                    layout.label(text="Not used with a plinth, cornice or belt", icon='INFO')
 
         layout.separator()
         layout.prop(self, "smooth")
@@ -319,6 +370,19 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
             "parapet_height": self.parapet_height,
             "parapet_thickness": self.parapet_thickness,
             "door_step": self.door_step,
+            "pediment": self.pediment,
+            "keystone": self.keystone,
+            "keystone_depth": self.keystone_depth,
+            "panel": self.panel,
+            "panel_height": self.panel_height,
+            "panel_depth": self.panel_depth,
+            "belt": self.belt,
+            "belt_height": self.belt_height,
+            "belt_depth": self.belt_depth,
+            "belt_gap": self.belt_gap,
+            "pilasters": self.pilasters,
+            "pilaster_width": self.pilaster_width,
+            "pilaster_depth": self.pilaster_depth,
             "frame": self.frame,
             "frame_width": self.frame_width,
             "frame_depth": self.frame_depth,
