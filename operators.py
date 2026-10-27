@@ -193,54 +193,53 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
             if bay:
                 col.prop(self, "bay_full")
                 if not self.bay_full:
-                    col.prop(self, "bay_width")
-                col.prop(self, "bay_depth")
-                col.prop(self, "bay_splay")
+                    col.prop(self, "bay_width", slider=True)
+                col.prop(self, "bay_depth", slider=True)
+                col.prop(self, "bay_splay", slider=True)
                 if not self.bay_full:
-                    col.prop(self, "bay_floor")
-                    col.prop(self, "bay_height")
+                    col.prop(self, "bay_floor", slider=True)
+                    col.prop(self, "bay_height", slider=True)
                 col.prop(self, "bay_side_windows")
                 col = layout.column(align=True)
             if loggia:
                 col.prop(self, "loggia_content", expand=True)
-                col.prop(self, "loggia_width")
-                col.prop(self, "loggia_height")
-                col.prop(self, "loggia_depth")
-                col.prop(self, "loggia_floor")
-                col.prop(self, "parapet_height")
-                col.prop(self, "parapet_thickness")
+                col.prop(self, "loggia_width", slider=True)
+                col.prop(self, "loggia_height", slider=True)
+                col.prop(self, "loggia_depth", slider=True)
+                col.prop(self, "loggia_floor", slider=True)
+                col.prop(self, "parapet_height", slider=True)
+                col.prop(self, "parapet_thickness", slider=True)
                 col = layout.column(align=True)
             if balcony:
-                col.prop(self, "door_width")
-                col.prop(self, "door_height")
+                col.prop(self, "door_width", slider=True)
+                col.prop(self, "door_height", slider=True)
                 if not (loggia and self.loggia_content == 'DOOR'):
-                    col.prop(self, "open_width", text="Window Width")
-                    col.prop(self, "open_height", text="Window Height")
-                    col.prop(self, "gap")
+                    col.prop(self, "open_width", text="Window Width", slider=True)
+                    col.prop(self, "open_height", text="Window Height", slider=True)
+                    col.prop(self, "gap", slider=True)
                     col.prop(self, "flip")
             elif entrance:
-                col.prop(self, "door_width")
-                col.prop(self, "door_height")
-                col.prop(self, "door_step")
-                col.prop(self, "count")
+                col.prop(self, "door_width", slider=True)
+                col.prop(self, "door_height", slider=True)
+                col.prop(self, "door_step", slider=True)
+                col.prop(self, "count", slider=True)
                 if self.count > 1:
-                    col.prop(self, "gap")
+                    col.prop(self, "gap", slider=True)
             else:
-                col.prop(self, "open_width")
-                col.prop(self, "open_height")
+                col.prop(self, "open_width", slider=True)
+                col.prop(self, "open_height", slider=True)
                 if self.opening == 'DOOR':
-                    col.prop(self, "door_step")
-            col.prop(self, "depth")
-            col.prop(self, "offset_x")
+                    col.prop(self, "door_step", slider=True)
+            col.prop(self, "depth", slider=True)
+            col.prop(self, "offset_x", slider=True)
             if not balcony and not entrance and not bay:
                 col.prop(self, "count", slider=True)
                 if self.count > 1:
                     if windowed:
                         col.prop(self, "direction")
-                    col.prop(self, "gap")
+                    col.prop(self, "gap", slider=True)
                 if windowed:
-                    col.prop(self, "sill_height")
-
+                    col.prop(self, "sill_height", slider=True)
             layout.prop(self, "arch")
             if self.arch:
                 layout.prop(self, "arch_type", expand=True)
@@ -252,16 +251,15 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
                 layout.prop(self, "porch")
                 if self.porch:
                     col = layout.column(align=True)
-                    col.prop(self, "porch_thickness", text="Porch Thickness")
-                    col.prop(self, "porch_depth", text="Porch Depth")
+                    col.prop(self, "porch_thickness", text="Porch Thickness", slider=True)
+                    col.prop(self, "porch_depth", text="Porch Depth", slider=True)
                 layout.prop(self, "canopy")
                 if self.canopy:
                     col = layout.column(align=True)
-                    col.prop(self, "canopy_thickness", text="Canopy Thickness")
-                    col.prop(self, "canopy_depth", text="Canopy Depth")
-                    col.prop(self, "canopy_gap")
-                layout.prop(self, "porch_margin")
-
+                    col.prop(self, "canopy_thickness", text="Canopy Thickness", slider=True)
+                    col.prop(self, "canopy_depth", text="Canopy Depth", slider=True)
+                    col.prop(self, "canopy_gap", slider=True)
+                layout.prop(self, "porch_margin", slider=True)
             if self.opening in {'WINDOW', 'DOOR', 'CORNER', 'INNER_CORNER', 'BAY'}:
                 layout.prop(self, "frame")
                 if self.frame:
@@ -308,12 +306,11 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
                 layout.prop(self, "slab")
                 if self.slab:
                     col = layout.column(align=True)
-                    col.prop(self, "slab_thickness", text="Slab Thickness")
-                    col.prop(self, "slab_depth", text="Slab Depth")
-                    col.prop(self, "door_step")
-                    col.prop(self, "slab_margin")
-                    col.prop(self, "slab_offset")
-
+                    col.prop(self, "slab_thickness", text="Slab Thickness", slider=True)
+                    col.prop(self, "slab_depth", text="Slab Depth", slider=True)
+                    col.prop(self, "door_step", slider=True)
+                    col.prop(self, "slab_margin", slider=True)
+                    col.prop(self, "slab_offset", slider=True)
         if self.opening != 'BAY' or self.bay_full:   # an ordinary bay does not use the plinth and the cornice
             layout.separator()
             layout.prop(self, "base")
@@ -345,7 +342,7 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
         layout.separator()
         layout.prop(self, "smooth")
         if self.smooth:
-            layout.prop(self, "smooth_angle")
+            layout.prop(self, "smooth_angle", slider=True)
         layout.prop(self, "uvs")
         if self.uvs:
             layout.prop(self, "uv_margin")
