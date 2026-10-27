@@ -72,6 +72,11 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
         default='BOTH',
     )
     porch: BoolProperty(name="Porch Slab", description="Slab in front of the doors, standing on the ground", default=True)
+    stairs: BoolProperty(name="Stairs", description="Steps up from the ground to a landing in front of the doors, instead of the porch slab, for an entrance raised above the ground. Use a 4 m high module so that it welds to the neighbours", default=False)
+    stairs_height: FloatProperty(name="Rise", description="Height of the landing above the ground", default=1.0, min=0.3, max=3.0, unit='LENGTH')
+    stairs_steps: IntProperty(name="Steps", description="Number of risers", default=6, min=2, max=20)
+    stairs_tread: FloatProperty(name="Tread Depth", description="Depth of one step", default=0.3, min=0.15, max=0.6, unit='LENGTH')
+    stairs_landing: FloatProperty(name="Landing Depth", description="Flat platform in front of the doors at the door level", default=1.0, min=0.3, max=3.0, unit='LENGTH')
     porch_thickness: FloatProperty(name="Thickness", default=0.2, min=0.02, soft_max=0.6, unit='LENGTH')
     porch_depth: FloatProperty(name="Depth", description="How far the porch sticks out of the wall", default=1.5, min=0.05, soft_max=5.0, unit='LENGTH')
     porch_margin: FloatProperty(name="Side Margin", description="Plain wall left and right of the porch and canopy, at least 0.1 so that neighbouring modules weld together", default=0.1, min=0.1, soft_max=1.0, unit='LENGTH')
@@ -248,8 +253,16 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
                 col.prop(self, "arch_segments", slider=True)
 
             if entrance:
-                layout.prop(self, "porch")
-                if self.porch:
+                layout.prop(self, "stairs")
+                if self.stairs:
+                    col = layout.column(align=True)
+                    col.prop(self, "stairs_height", slider=True)
+                    col.prop(self, "stairs_steps", slider=True)
+                    col.prop(self, "stairs_tread", slider=True)
+                    col.prop(self, "stairs_landing", slider=True)
+                else:
+                    layout.prop(self, "porch")
+                if self.porch and not self.stairs:
                     col = layout.column(align=True)
                     col.prop(self, "porch_thickness", text="Porch Thickness", slider=True)
                     col.prop(self, "porch_depth", text="Porch Depth", slider=True)
@@ -420,6 +433,11 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
             "cornice": self.cornice,
             "cornice_height": self.cornice_height,
             "cornice_depth": self.cornice_depth,
+            "stairs": self.stairs,
+            "stairs_height": self.stairs_height,
+            "stairs_steps": self.stairs_steps,
+            "stairs_tread": self.stairs_tread,
+            "stairs_landing": self.stairs_landing,
             "porch": self.porch,
             "porch_thickness": self.porch_thickness,
             "porch_depth": self.porch_depth,

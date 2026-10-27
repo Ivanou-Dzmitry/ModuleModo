@@ -239,7 +239,12 @@ def _resolve_entrance(p, out):
     margin = _clamp(p["porch_margin"], MIN_EDGE_MARGIN, width / 4)
     sx0, sx1 = margin, width - margin
 
-    porch_top = _clamp(p["porch_thickness"], 0.02, height / 4) if p["porch"] else 0.0
+    stairs = bool(p.get("stairs"))
+    porch = p["porch"] and not stairs   # stairs take the place of the porch slab
+    if stairs:   # the landing is the top of the stairs, `rise` above the ground
+        porch_top = _clamp(p["stairs_height"], 0.3, max(0.3, min(3.0, height - 1.0)))
+    else:
+        porch_top = _clamp(p["porch_thickness"], 0.02, height / 4) if porch else 0.0
     canopy_t = _clamp(p["canopy_thickness"], 0.02, height / 8) if p["canopy"] else 0.0
     canopy_gap = max(p["canopy_gap"], 0.1) if p["canopy"] else 0.0
 
@@ -290,13 +295,19 @@ def _resolve_entrance(p, out):
         for lo, hi in zip(xs_cells[1:], xs_cells[2:]):
             out["plain"].append([(lo, canopy_top), (hi, canopy_top), top_hi])
 
-    if p["porch"]:
+    if porch or stairs:
         xs = {round(x, 5) for x in xs_cells}
         for o in out["openings"]:
             if o["z0"] - porch_top <= EPS:   # a door flush with the porch puts its jambs on the slab edge
                 xs.update((round(o["x0"], 5), round(o["x1"], 5)))
+    if porch:
         out["slabs"].append({"xs": sorted(xs), "z_bottom": 0.0, "z_top": porch_top,
                              "depth": max(p["porch_depth"], 0.05), "bottom": False})
+    if stairs:
+        out["stairs"] = {"xs": sorted(xs), "rise": porch_top,
+                         "steps": int(_clamp(p["stairs_steps"], 2, 20)),
+                         "tread": _clamp(p["stairs_tread"], 0.15, 0.6),
+                         "landing": _clamp(p["stairs_landing"], 0.3, 3.0)}
     if p["canopy"]:
         out["slabs"].append({"xs": [round(x, 5) for x in xs_cells], "z_bottom": cell_top, "z_top": canopy_top,
                              "depth": max(p["canopy_depth"], 0.05), "bottom": True})
@@ -803,7 +814,7 @@ def _band_heights(p):
     """Heights of the plinth and the cornice, kept small enough to leave room for the module."""
     height = p["height"]
     base_h = _clamp(p["base_height"], 0.02, height / 4) if p["base"] else 0.0
-    if p["opening"] == 'ENTRANCE' and p["porch"]:
+    if p["opening"] == 'ENTRANCE' and (p["porch"] or p.get("stairs")):
         base_h = 0.0   # the porch slab already stands on the ground and acts as the base
     cornice_h = _clamp(p["cornice_height"], 0.02, height / 4) if p["cornice"] else 0.0
     return base_h, cornice_h
@@ -947,6 +958,42 @@ def _build_wall(bm, r):
         _build_slab(bm, vert, r["slab"])
     for slab in r["slabs"]:
         _build_slab(bm, vert, slab)
+    if r.get("stairs"):
+        _build_stairs(bm, vert, r["stairs"])
+
+
+def _build_stairs(bm, vert, st):
+    """A flight of steps in front of the wall, rising from the ground (Z=0) to the landing (built pre-mirror).
+
+    The landing is `rise` above the ground and the doors stand on it; `steps` risers go down from it
+    to the ground. The body is solid, with no bottom and no back face (it stands on the ground against
+    the wall). Each side wall only uses the corners of the steps and the two back corners, so the
+    ground edge has just its two end vertices: one quad at the landing, a fan of triangles from the
+    back corner on the ground, and one small right triangle in every step.
+    """
+    xs, rise, steps, tread, landing = st["xs"], st["rise"], st["steps"], st["tread"], st["landing"]
+    riser = rise / steps
+    zs = [rise - k * riser for k in range(steps)] + [0.0]   # zs[k]: top of tread k, zs[steps] is the ground
+    ys = [-(landing + k * tread) for k in range(steps)]     # ys[k]: front of riser k
+
+    for a, b in zip(xs, xs[1:]):
+        _directed_face(bm, [vert(a, rise), vert(b, rise), vert(b, rise, ys[0]), vert(a, rise, ys[0])], (0, 0, 1))
+        for k in range(steps):
+            _directed_face(bm, [vert(a, zs[k], ys[k]), vert(b, zs[k], ys[k]),
+                                vert(b, zs[k + 1], ys[k]), vert(a, zs[k + 1], ys[k])], (0, -1, 0))
+            if k + 1 < steps:
+                _directed_face(bm, [vert(a, zs[k + 1], ys[k]), vert(b, zs[k + 1], ys[k]),
+                                    vert(b, zs[k + 1], ys[k + 1]), vert(a, zs[k + 1], ys[k + 1])], (0, 0, 1))
+
+    for x, side in ((xs[0], -1), (xs[-1], 1)):
+        out = (side, 0, 0)
+        corner = vert(x, 0.0)                                   # back corner on the ground
+        feet = [vert(x, zs[k + 1], ys[k]) for k in range(steps)]  # bottom of every riser, the last is on the ground
+        _directed_face(bm, [corner, vert(x, rise), vert(x, rise, ys[0]), feet[0]], out)
+        for k in range(steps - 1):
+            _directed_face(bm, [corner, feet[k], feet[k + 1]], out)
+        for k in range(1, steps):
+            _directed_face(bm, [feet[k - 1], feet[k], vert(x, zs[k], ys[k])], out)
 
 
 def _directed_face(bm, verts, direction):

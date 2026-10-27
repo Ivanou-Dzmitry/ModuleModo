@@ -35,6 +35,7 @@ _BALCONY = {**_WINDOW, "opening": 'BALCONY', "door_width": 0.9, "door_height": 2
 # Entrance: doors on a threshold, an optional porch slab (stands on the ground) and an optional canopy.
 _ENTRANCE = {**_WINDOW, "opening": 'ENTRANCE', "door_width": 1.0, "door_height": 2.1, "door_step": 0.1, "gap": 0.3,
              "porch": True, "porch_thickness": 0.2, "porch_depth": 1.5, "porch_margin": 0.1,
+             "stairs": False, "stairs_height": 1.0, "stairs_steps": 6, "stairs_tread": 0.3, "stairs_landing": 1.0,
              "canopy": False, "canopy_thickness": 0.15, "canopy_depth": 1.0, "canopy_gap": 0.3}
 
 # Every button sets the full layout, so a button never inherits sizes from the previous one.
@@ -80,6 +81,11 @@ PRESETS = (
     ("Entrance: Door + Porch", _ENTRANCE),
     ("Entrance: Porch + Canopy", {**_ENTRANCE, "canopy": True}),
     ("Entrance: 2 Doors", {**_ENTRANCE, "canopy": True, "count": 2, "door_width": 0.9}),
+    # A raised entrance: steps up from the ground to a landing 1 m high. The module is 4 m high, so that its
+    # edges match the neighbouring 4 m modules (1 m of base and 3 m of storey).
+    ("Entrance: Stairs", {**_ENTRANCE, "stairs": True, "height": 4.0}),
+    ("Entrance: Stairs + Canopy", {**_ENTRANCE, "stairs": True, "height": 4.0, "canopy": True}),
+    ("Entrance: Stairs, 2 Doors", {**_ENTRANCE, "stairs": True, "height": 4.0, "canopy": True, "count": 2, "door_width": 0.9}),
     ("Balcony: Door + Window", _BALCONY),
     ("Door + Window (No Slab)", {**_BALCONY, "slab": False}),
     ("Loggia", {**_BALCONY, "opening": 'LOGGIA', "door_step": 0.1, "loggia_width": 2.6, "loggia_height": 1.2,
@@ -121,6 +127,8 @@ SECTIONS = (
         (None, (("Door", "Door Wall"),)),
         ("Entrance", (("Porch", "Entrance: Door + Porch"), ("Canopy", "Entrance: Porch + Canopy"),
                       ("2 Doors", "Entrance: 2 Doors"))),
+        ("Entrance + Stairs", (("Stairs", "Entrance: Stairs"), ("Canopy", "Entrance: Stairs + Canopy"),
+                               ("2 Doors", "Entrance: Stairs, 2 Doors"))),
     )),
     ("corners", "Corners", 'AXIS_TOP', (
         ("Outer Corner", (("2 Windows", "Corner: 2 Windows"), ("1 Window", "Corner: 1 Window"))),
