@@ -111,6 +111,7 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
 
     shutters: BoolProperty(name="Shutters", description="Two plates on the wall beside the window; over an arch they follow the arch. They are separate meshes lying on the wall, not part of it", default=False)
     shutter_depth: FloatProperty(name="Shutter Depth", description="How far the shutters stick out of the wall", default=0.03, min=0.01, soft_max=0.2, unit='LENGTH')
+    below_ground: BoolProperty(name="Below Ground", description="Build the module below level 0: its top edge is at Z=0 and it grows downwards. The pivot stays at Z=0 (for the underground band of a building)", default=False)
     pediment: BoolProperty(name="Pediment", description="A triangular gable over a straight top instead of the trapezoid lintel", default=False)
     keystone: BoolProperty(name="Keystone", description="A wedge-shaped block on the crown of the arch band (or of the frame over an arch), wider at the top and higher than the band. A separate piece, not stitched to the band", default=False)
     keystone_width: FloatProperty(name="Keystone Width", description="Width of the bottom of the keystone", default=0.2, min=0.05, soft_max=0.6, unit='LENGTH')
@@ -176,6 +177,7 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
         col.prop(self, "height")
         if self.opening not in {'CORNER', 'INNER_CORNER'}:
             layout.prop(self, "pivot")
+            layout.prop(self, "below_ground")
 
         layout.separator()
         layout.prop(self, "opening", expand=True)
@@ -438,6 +440,9 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
 
         bm = bmesh.new()
         generator.build_module(bm, params)
+        below = self.below_ground and self.opening not in {'CORNER', 'INNER_CORNER'}
+        if below:
+            bmesh.ops.translate(bm, verts=list(bm.verts), vec=(0.0, 0.0, -self.height))
         if self.opening not in {'CORNER', 'INNER_CORNER'}:
             generator.apply_pivot(bm, self.pivot, self.width)
 
@@ -472,7 +477,7 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
             context.collection.objects.link(obj)
             obj.parent = module
             x, y, z = part["origin"]
-            obj.location = (x - self.width / 2 if self.pivot == 'CENTER' else x, y, z)
+            obj.location = (x - self.width / 2 if self.pivot == 'CENTER' else x, y, z - (self.height if self.below_ground else 0.0))
             bpy.ops.object.select_all(action='DESELECT')
             obj.select_set(True)
             context.view_layer.objects.active = obj

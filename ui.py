@@ -18,7 +18,7 @@ ADDON_VERSION = _read_version()
 
 
 # Typical sizes in metres: window 1.2 x 1.4 with the sill at 0.9, interior door 0.9 x 2.1.
-_WINDOW = {"opening": 'WINDOW', "arch": False, "arch_type": 'ROUND', "sill": True, "count": 1, "direction": 'HORIZONTAL', "offset_x": 0.0,
+_WINDOW = {"width": 3.0, "height": 3.0, "below_ground": False, "opening": 'WINDOW', "arch": False, "arch_type": 'ROUND', "sill": True, "count": 1, "direction": 'HORIZONTAL', "offset_x": 0.0,
            "open_width": 1.2, "open_height": 1.4, "sill_height": 0.9, "gap": 0.5,
            "door_width": 0.9, "door_height": 2.1, "door_step": 0.1, "flip": False, "slab": True,
            "frame": False, "trim": False, "pediment": False, "shutters": False, "keystone": False, "panel": False, "belt": False,
@@ -88,6 +88,15 @@ PRESETS = (
                             "loggia_height": 1.2, "loggia_depth": 1.2, "loggia_floor": 0.3, "parapet_height": 1.1,
                             "parapet_thickness": 0.15}),
     ("Solid Wall", {**_WINDOW, "opening": 'NONE'}),
+    # The underground band: a plain wall below level 0, its top edge at Z=0.
+    ("Underground", {**_WINDOW, "opening": 'NONE', "height": 0.5, "below_ground": True}),
+    # The technical floor over the last storey: a low module, 1 m by default.
+    ("Attic: Plain", {**_WINDOW, "opening": 'NONE', "height": 1.0}),
+    ("Attic: Window", {**_WINDOW, "height": 1.0, "open_width": 0.5, "open_height": 0.5, "sill_height": 0.25,
+                       "sill": False}),
+    ("Attic + Cornice: Plain", {**_WINDOW, "opening": 'NONE', "height": 1.0, "cornice": True, "cornice_height": 0.25}),
+    ("Attic + Cornice: Window", {**_WINDOW, "height": 1.0, "open_width": 0.4, "open_height": 0.4, "sill_height": 0.15,
+                                 "sill": False, "cornice": True, "cornice_height": 0.25}),
 )
 
 
@@ -125,6 +134,11 @@ SECTIONS = (
     ("balcony", "Balcony and Loggia", 'MOD_BUILD', (
         ("Balcony", (("With Slab", "Balcony: Door + Window"), ("No Slab", "Door + Window (No Slab)"))),
         ("Loggia", (("Door + Window", "Loggia"), ("Door Only", "Loggia (Door Only)"))),
+    )),
+    ("levels", "Underground and Attic", 'TRIA_DOWN', (
+        (None, (("Underground (below Z=0)", "Underground"),)),
+        ("Attic", (("Plain", "Attic: Plain"), ("Window", "Attic: Window"))),
+        ("Attic + Cornice", (("Plain", "Attic + Cornice: Plain"), ("Window", "Attic + Cornice: Window"))),
     )),
     ("other", "Other", 'MESH_PLANE', (
         (None, (("Solid Wall", "Solid Wall"),)),
