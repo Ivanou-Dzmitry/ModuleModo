@@ -1053,14 +1053,16 @@ def _archivolt_band(bm, vert, arch_row, outer, depth, feet):
         _directed_face(bm, [arch_row[-1], outer[-1], front(outer[-1]), front(arch_row[-1])], (0, 0, -1))
 
 
-def _build_keystone(bm, o, band, outer):
+def _build_keystone(bm, o, band, outer, arch_row):
     """A keystone: a separate block, wider at the top, standing on the crown of an arch band.
 
     It lies on the wall plane with its back open and shares no vertices with the wall or the band. Its bottom is level with the top of the arch, its top is above the outer edge of the band,
     and its sides lean the way the sides of a wedge in the arch do (towards the centre of the arch).
     """
     key = band["key"]
-    z_bottom = o["z_top"] + 0.005          # level with the arch, a hair above its crown vertex
+    # level with the crown of the arch (with an odd number of segments the crown is a flat segment a
+    # little below the nominal top), a hair above its vertices
+    z_bottom = max(v.co.z for v in arch_row) + 0.005
     z_outer = max(v.co.z for v in outer)
     z_top = min(z_outer + key["height"], o["cell"][3] - 0.03)     # stays inside the cell of the opening
     if z_top - z_outer < 0.02:
@@ -1468,7 +1470,7 @@ def _build_opening(bm, vert, o, depth):
                             apex=apex if lintel["pediment"] else None)
     band = frame or trim
     if rise > 0 and band and band.get("key"):
-        _build_keystone(bm, o, band, outer)
+        _build_keystone(bm, o, band, outer, arch_row)
 
 
 def _build_slab(bm, vert, slab):

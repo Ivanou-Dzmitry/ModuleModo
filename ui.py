@@ -65,7 +65,7 @@ PRESETS = (
                                "open_height": 1.6}),
     ("Window + Pediment", {**_WINDOW, "trim": True, "pediment": True}),
     ("Arched Window + Keystone", {**_WINDOW, "trim": True, "keystone": True, "arch": True, "arch_rise": 0.6,
-                                  "arch_segments": 8, "open_height": 1.6}),
+                                  "arch_segments": 9, "open_height": 1.6}),    # odd: a segment, not a vertex, at the crown
     ("Window + Panel", {**_WINDOW, "panel": True}),
     ("Window Wall + Belt Course", {**_WINDOW, "belt": True}),
     ("Window Wall + Pilasters", {**_WINDOW, "pilasters": 'BOTH'}),
