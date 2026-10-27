@@ -125,6 +125,8 @@ def _frame_spec(o, p):
     # takes the place of that bar, and an opening near the floor (a door) has none.
     bottom = o["sill"] is None and o["z0"] - cz0 >= 0.25
     width = min(p.get("frame_width", 0.12), room_x, room_up)
+    if o["rise"] > 0:
+        width = _arch_band_width(o, width, cz1 - 0.05)
     if bottom:
         width = min(width, o["z0"] - cz0 - 0.05)
     if width < 0.03:
@@ -148,6 +150,7 @@ def _trim_spec(o, p):
     if o["rise"] > 0:
         # the offset of a pointed arch is longer at the tip, so keep more room above it
         width = min(p.get("trim_width", 0.2), room_x, room_up / (1.7 if o["pointed"] else 1.05))
+        width = _arch_band_width(o, width, cz1 - 0.05)
         if width < 0.03:
             return None
         return {"kind": 'ARCH', "width": width, "depth": depth, "key": _keystone(o, p)}
@@ -497,10 +500,14 @@ def _arch_points(x0, x1, z_spring, rise, segments, pointed=False):
         return _pointed_arch_points(x0, x1, z_spring, rise, segments)
     half = (x1 - x0) / 2
     xc = (x0 + x1) / 2
+    rise = min(rise, half)      # a hair above a semicircle would flip the arc upside down
     radius = (half * half + rise * rise) / (2 * rise)
     zc = z_spring + rise - radius
-    start = math.atan2(z_spring - zc, -half)
-    end = math.atan2(z_spring - zc, half)
+    dz = z_spring - zc
+    if abs(dz) < 1e-9:
+        dz = 0.0            # an exact semicircle: its centre is on the spring line, no rounding noise
+    start = math.atan2(dz, -half)
+    end = math.atan2(dz, half)
     points = []
     for k in range(segments + 1):
         a = start + (end - start) * k / segments
@@ -1015,9 +1022,8 @@ def _build_loggia(bm, r):
         _directed_face(bm, [p_open, b_top, b_floor, p_floor], direction)
 
 
-def _offset_row(vert, arch_row, width):
-    """The outer row of an arch band: the arch moved out by `width`, with horizontal feet at the springs."""
-    pts = [(v.co.x, v.co.z) for v in arch_row]
+def _offset_points(pts, width):
+    """The arch `pts` moved out by `width`, with horizontal feet at the springs (a miter at every corner)."""
     count = len(pts) - 1
 
     def normal(a, b):
@@ -1025,13 +1031,30 @@ def _offset_row(vert, arch_row, width):
         length = math.hypot(dx, dz)
         return (-dz / length, dx / length)
 
-    outer = [vert(pts[0][0] - width, pts[0][1])]
+    outer = [(pts[0][0] - width, pts[0][1])]
     for k in range(1, count):
         n1, n2 = normal(pts[k - 1], pts[k]), normal(pts[k], pts[k + 1])
         scale = width / (1.0 + n1[0] * n2[0] + n1[1] * n2[1])    # miter: the offset is `width` on both sides
-        outer.append(vert(pts[k][0] + (n1[0] + n2[0]) * scale, pts[k][1] + (n1[1] + n2[1]) * scale))
-    outer.append(vert(pts[-1][0] + width, pts[-1][1]))
+        outer.append((pts[k][0] + (n1[0] + n2[0]) * scale, pts[k][1] + (n1[1] + n2[1]) * scale))
+    outer.append((pts[-1][0] + width, pts[-1][1]))
     return outer
+
+
+def _offset_row(vert, arch_row, width):
+    """The outer row of an arch band: the arch moved out by `width`, with horizontal feet at the springs."""
+    return [vert(x, z) for x, z in _offset_points([(v.co.x, v.co.z) for v in arch_row], width)]
+
+
+def _arch_band_width(o, want, ceiling):
+    """The widest band up to `want` whose outer row stays below `ceiling`: the miter at the tip of a
+    sharp pointed arch is much longer than the band is wide."""
+    pts = _arch_points(o["x0"], o["x1"], o["z_top"] - o["rise"], o["rise"], o["segments"], o["pointed"])
+    width = want
+    for _ in range(30):
+        if max(z for _, z in _offset_points(pts, width)) <= ceiling:
+            break
+        width *= 0.9
+    return width
 
 
 def _archivolt_band(bm, vert, arch_row, outer, depth, feet):
