@@ -212,7 +212,8 @@ def _panel_top_spec(o, p):
     """A panel above the opening: a rectangle of the wall pushed out (or in) over the head of the window.
 
     It stands over whatever is on top of the opening (a frame, a flat lintel, or the opening itself), a
-    gap above it, and is inset from the sides by a small margin so that it shares no vertices with them.
+    gap above it, as wide as the opening (the outer edge of a frame), less an optional inset on each side.
+    It is higher than the opening, so it shares no vertices with it.
     Over an arch or a pediment the wall is cut into a fan of triangles, so there is no panel there.
     """
     if not p.get("panel_top") or o["rise"] > 0:
@@ -230,7 +231,8 @@ def _panel_top_spec(o, p):
     else:
         base_z = o["z_top"]
     margin = 0.06
-    x0, x1 = o["x0"] - half + margin, o["x1"] + half - margin
+    inset = max(p.get("panel_top_inset", 0.0), 0.0)
+    x0, x1 = o["x0"] - half + inset, o["x1"] + half - inset
     z0 = base_z + max(p.get("panel_top_gap", 0.15), margin)
     height = min(p.get("panel_top_height", 0.25), cz1 - margin - z0)
     if x1 - x0 < 0.2 or height < 0.1:

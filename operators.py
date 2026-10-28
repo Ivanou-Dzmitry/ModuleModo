@@ -128,6 +128,7 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
     panel_top: BoolProperty(name="Panel above Window", description="A rectangle of the wall pushed out (or in) above the window. Not over arches and pediments", default=False)
     panel_top_height: FloatProperty(name="Panel Height", default=0.25, min=0.1, soft_max=1.0, unit='LENGTH')
     panel_top_gap: FloatProperty(name="Gap above Window", description="Distance from the top of the window (or its frame and trim) to the panel", default=0.15, min=0.06, soft_max=0.6, unit='LENGTH')
+    panel_top_inset: FloatProperty(name="Side Inset", description="How much narrower the panel is than the window (than its frame), on each side. 0 makes it as wide as the window", default=0.0, min=0.0, soft_max=0.5, unit='LENGTH')
     panel_top_depth: FloatProperty(name="Panel Depth", description="How far the panel sticks out of the wall; a negative value sinks it into the wall", default=0.03, min=-0.3, max=0.3, unit='LENGTH')
     belt: BoolProperty(name="Belt Course", description="A thin band across the wall above the openings, with a plain strip of wall above it", default=False)
     belt_height: FloatProperty(name="Belt Height", default=0.12, min=0.03, soft_max=0.5, unit='LENGTH')
@@ -316,6 +317,7 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
                     col = layout.column(align=True)
                     col.prop(self, "panel_top_height", text="Top Panel Height", slider=True)
                     col.prop(self, "panel_top_gap", slider=True)
+                    col.prop(self, "panel_top_inset", slider=True)
                     col.prop(self, "panel_top_depth", text="Top Panel Depth", slider=True)
 
             if self.opening in {'WINDOW', 'BALCONY', 'LOGGIA', 'CORNER', 'INNER_CORNER', 'BAY'}:
@@ -417,6 +419,7 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
             "panel_top": self.panel_top,
             "panel_top_height": self.panel_top_height,
             "panel_top_gap": self.panel_top_gap,
+            "panel_top_inset": self.panel_top_inset,
             "panel_top_depth": self.panel_top_depth,
             "belt": self.belt,
             "belt_height": self.belt_height,
