@@ -102,6 +102,7 @@ def resolve_params(p):
         opening["frame"] = _frame_spec(opening, p)
         opening["trim"] = None if opening["frame"] else _trim_spec(opening, p)
         opening["panel"] = _panel_spec(opening, p)
+        opening["panel_top"] = _panel_top_spec(opening, p)
         opening["shutters"] = _shutter_spec(opening, p)
 
     out["depth"] = max(p["depth"], 0.0)
@@ -205,6 +206,39 @@ def _panel_spec(o, p):
     if abs(depth) < 0.01:
         depth = 0.01
     return {"x0": x0, "x1": x1, "z0": top - height, "z1": top, "depth": depth}
+
+
+def _panel_top_spec(o, p):
+    """A panel above the opening: a rectangle of the wall pushed out (or in) over the head of the window.
+
+    It stands over whatever is on top of the opening (a frame, a flat lintel, or the opening itself), a
+    gap above it, and is inset from the sides by a small margin so that it shares no vertices with them.
+    Over an arch or a pediment the wall is cut into a fan of triangles, so there is no panel there.
+    """
+    if not p.get("panel_top") or o["rise"] > 0:
+        return None
+    cx0, cx1, cz0, cz1 = o["cell"]
+    frame, trim = o.get("frame"), o.get("trim")
+    half = 0.0
+    if frame:
+        half = frame["width"]
+        base_z = o["z_top"] + half
+    elif trim:
+        if trim["kind"] != 'LINTEL' or trim["pediment"]:
+            return None
+        base_z = o["z_top"] + trim["side"]
+    else:
+        base_z = o["z_top"]
+    margin = 0.06
+    x0, x1 = o["x0"] - half + margin, o["x1"] + half - margin
+    z0 = base_z + max(p.get("panel_top_gap", 0.15), margin)
+    height = min(p.get("panel_top_height", 0.25), cz1 - margin - z0)
+    if x1 - x0 < 0.2 or height < 0.1:
+        return None
+    depth = _clamp(p.get("panel_top_depth", 0.03), -0.3, 0.3)
+    if abs(depth) < 0.01:
+        depth = 0.01
+    return {"x0": x0, "x1": x1, "z0": z0, "z1": z0 + height, "depth": depth}
 
 
 MIN_EDGE_MARGIN = 0.1     # slabs stop this far from the module edge, so the edge keeps only its corners
@@ -659,6 +693,8 @@ def _build_bay(bm, p):
             reach = max(reach, p.get("trim_depth", 0.06))
         if p.get("panel"):
             reach = max(reach, p.get("panel_depth", 0.03))
+        if p.get("panel_top"):
+            reach = max(reach, p.get("panel_top_depth", 0.03))
     edge = MIN_EDGE_MARGIN + reach
     bay_w = width if full else _clamp(p["bay_width"], 0.8, width - 2 * edge)
     depth = max(p["bay_depth"], 0.2)
@@ -1268,9 +1304,10 @@ def _extrude_lintel(bm, a, b, c, d, depth, apex=None):
     _directed_face(bm, [b, c, fc, fb], (height, 0, -flare))
 
 
-def _wall_below(bm, vert, quad, panel):
-    """The wall face under an opening, `quad` is [c_bl, c_br, base_r, base_l]; with a panel the face
-    becomes an inset ring of four faces round a rectangle that is pushed out (or in) as a block."""
+def _wall_panel(bm, vert, quad, panel):
+    """A wall face above or under an opening, `quad` is [bottom-left, bottom-right, top-right, top-left];
+    with a panel the face becomes an inset ring of four faces round a rectangle that is pushed out (or in)
+    as a block."""
     c_bl, c_br, base_r, base_l = quad
     if not panel:
         _plane_face(bm, quad)
@@ -1459,20 +1496,21 @@ def _build_opening(bm, vert, o, depth):
     # Below the opening
     panel = o.get("panel")
     if sill:
-        _wall_below(bm, vert, [c_bl, c_br, sill_br, sill_bl], panel)
+        _wall_panel(bm, vert, [c_bl, c_br, sill_br, sill_bl], panel)
         if not frame:
             _plane_face(bm, [c_bl, sill_bl, open_bl])
             _plane_face(bm, [c_br, open_br, sill_br])
     elif not flush:
         if frame and frame.get("bottom"):
-            _wall_below(bm, vert, [c_bl, c_br, rb, lb], panel)
+            _wall_panel(bm, vert, [c_bl, c_br, rb, lb], panel)
         else:
-            _wall_below(bm, vert, [c_bl, c_br, open_br, open_bl], panel)
+            _wall_panel(bm, vert, [c_bl, c_br, open_br, open_bl], panel)
             if frame:
                 _plane_face(bm, [c_bl, open_bl, lb])
                 _plane_face(bm, [c_br, rb, open_br])
 
     # Above the opening
+    panel_top = o.get("panel_top")
     top_left = top_right = None
     if rise > 0:
         top_row = outer if outer is not None else arch_row
@@ -1489,7 +1527,7 @@ def _build_opening(bm, vert, o, depth):
         for k in range(first_right, n):
             _plane_face(bm, [c_tr, top_row[k], top_row[k + 1]])
     elif frame:
-        _plane_face(bm, [head_l, head_r, c_tr, c_tl])
+        _wall_panel(bm, vert, [head_l, head_r, c_tr, c_tl], panel_top)
     elif lintel:
         top_left = vert(x0 - lintel["flare"], z_top + lintel["side"])
         top_right = vert(x1 + lintel["flare"], z_top + lintel["side"])
@@ -1500,10 +1538,10 @@ def _build_opening(bm, vert, o, depth):
             _plane_face(bm, [c_tl, apex, c_tr])
             _plane_face(bm, [c_tr, apex, top_right])
         else:
-            _plane_face(bm, [c_tl, top_left, top_right, c_tr])
+            _wall_panel(bm, vert, [top_left, top_right, c_tr, c_tl], panel_top)
         _plane_face(bm, [spring_r, c_tr, top_right])
     else:
-        _plane_face(bm, [spring_l, spring_r, c_tr, c_tl])
+        _wall_panel(bm, vert, [spring_l, spring_r, c_tr, c_tl], panel_top)
 
     outline = [open_bl, open_br, spring_r] + arch_mid[::-1] + [spring_l]
     if depth <= EPS:

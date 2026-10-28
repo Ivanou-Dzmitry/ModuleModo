@@ -21,7 +21,7 @@ ADDON_VERSION = _read_version()
 _WINDOW = {"width": 3.0, "height": 3.0, "below_ground": False, "opening": 'WINDOW', "arch": False, "arch_type": 'ROUND', "sill": True, "count": 1, "direction": 'HORIZONTAL', "offset_x": 0.0,
            "open_width": 1.2, "open_height": 1.4, "sill_height": 0.9, "gap": 0.5,
            "door_width": 0.9, "door_height": 2.1, "door_step": 0.1, "flip": False, "slab": True,
-           "frame": False, "trim": False, "pediment": False, "shutters": False, "keystone": False, "panel": False, "belt": False,
+           "frame": False, "trim": False, "pediment": False, "shutters": False, "keystone": False, "panel": False, "panel_top": False, "belt": False,
            "pilasters": 'NONE', "corner_walls": 'BOTH', "bay_width": 2.6, "bay_depth": 0.8, "bay_splay": 0.5, "bay_floor": 0.6, "bay_height": 2.0,
            "bay_side_windows": True, "bay_full": False, "loggia_content": 'BOTH', "base": False, "base_height": 0.3, "base_depth": 0.15,
            "cornice": False, "cornice_height": 0.3, "cornice_depth": 0.25}
@@ -68,6 +68,7 @@ PRESETS = (
     ("Arched Window + Keystone", {**_WINDOW, "trim": True, "keystone": True, "arch": True, "arch_rise": 0.6,
                                   "arch_segments": 9, "open_height": 1.6}),    # odd: a segment, not a vertex, at the crown
     ("Window + Panel", {**_WINDOW, "panel": True}),
+    ("Window + Panel Above", {**_WINDOW, "panel_top": True}),
     ("Window Wall + Belt Course", {**_WINDOW, "belt": True}),
     ("Window Wall + Pilasters", {**_WINDOW, "pilasters": 'BOTH'}),
     ("Window + Shutters", {**_WINDOW, "shutters": True}),
@@ -118,7 +119,7 @@ SECTIONS = (
         ("Frame", (("Straight", "Window + Frame"), ("Arched", "Arched Window + Frame"))),
         ("Shutters", (("Straight", "Window + Shutters"), ("Round", "Arched Window + Shutters"),
                       ("Pointed", "Pointed Window + Shutters"))),
-        (None, (("Window + Panel under It", "Window + Panel"),)),
+        ("Panel", (("Under", "Window + Panel"), ("Above", "Window + Panel Above"))),
         (None, (("Pointed Window", "Pointed Window"),)),
         (None, (("Window + Plinth + Cornice", "Window Wall + Plinth + Cornice"),)),
         ("Wall", (("Belt Course", "Window Wall + Belt Course"), ("Pilasters", "Window Wall + Pilasters"))),
