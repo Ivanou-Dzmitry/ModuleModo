@@ -104,6 +104,7 @@ def resolve_params(p):
         opening["panel"] = _panel_spec(opening, p)
         opening["panel_top"] = _panel_top_spec(opening, p)
         opening["shutters"] = _shutter_spec(opening, p)
+    _merge_cells(out)
 
     out["depth"] = max(p["depth"], 0.0)
     return out
@@ -256,12 +257,81 @@ def _edge_strip(plain, corner_x, inner_x, zs, height):
     """
     low, high = (corner_x, 0.0), (corner_x, height)
     inner = [(inner_x, z) for z in zs]
+    if len(inner) == 1:
+        plain.append([low, inner[0], high])
+        return
     longest = max(range(len(inner) - 1), key=lambda i: inner[i + 1][1] - inner[i][1])
     for i in range(longest):
         plain.append([low, inner[i + 1], inner[i]])
     plain.append([low, inner[longest], inner[longest + 1], high])
     for i in range(longest + 1, len(inner) - 1):
         plain.append([high, inner[i], inner[i + 1]])
+
+
+def _merge_cells(out):
+    """Let the openings of a row share their wall, so the top and bottom edges keep only their corners.
+
+    Without it every cell has its own corners where two cells meet, and the module edge gets a vertex there.
+    Here the openings of the left half fan out to the top left corner and the others to the top right corner;
+    the wall between two openings (the pier) is one face of its own and the faces above it close the gap.
+    Returns False, and changes nothing, when an opening is not a plain rectangle in a full-height cell.
+    """
+    ops = out["openings"]
+    height, width = out["height"], out["width"]
+    if not ops:
+        return False
+    for o in ops:
+        if o["rise"] > 0 or o.get("frame") or o.get("trim") or o.get("panel_top"):
+            return False
+        if o["cell"][3] < height - EPS:
+            return False
+    n = len(ops)
+    for i, o in enumerate(ops):
+        o["far"] = (0.0, width) if n == 1 else ((0.0, 0.0) if i < (n + 1) // 2 else (width, width))
+
+    def flush(o):
+        return o["z0"] - o["cell"][2] <= EPS
+
+    for lo, ro in zip(ops, ops[1:]):
+        fl, fr = flush(lo), flush(ro)
+        x1, x0 = lo["x1"], ro["x0"]
+        b = lo["cell"][2]
+        if fl and fr:
+            cx_l, cx_r = x1, x0
+        elif fl:
+            cx_l = cx_r = x1
+        elif fr:
+            cx_l = cx_r = x0
+        else:
+            cx_l = cx_r = lo["cell"][1]
+        a = lo["cell"]
+        lo["cell"] = (a[0], cx_l, a[2], a[3])
+        c = ro["cell"]
+        ro["cell"] = (cx_r, c[1], c[2], c[3])
+        lo["skip_r"] = ro["skip_l"] = True
+
+        # the pier: from the bottom of one jamb to the bottom of the next, up both jambs to the heads
+        chain = []
+        for pt in ((x1, lo["z0"]), (cx_l, b), (cx_r, b), (x0, ro["z0"])):
+            if not chain or chain[-1] != pt:
+                chain.append(pt)
+        head_l, head_r = (x1, lo["z_top"]), (x0, ro["z_top"])
+        if len(chain) == 2:
+            out["plain"].append(chain + [head_r, head_l])
+        else:
+            out["plain"].append([chain[0], chain[1], head_l])
+            out["plain"].append([chain[1], chain[2], head_r, head_l])
+        # the wall above the pier reaches out to the corners that the two heads fan to
+        top_l, top_r = (0.0, height), (width, height)
+        lo_left = lo["far"][1] == 0.0
+        ro_left = ro["far"][0] == 0.0
+        if lo_left and ro_left:
+            out["plain"].append([top_l, head_l, head_r])
+        elif not lo_left and not ro_left:
+            out["plain"].append([top_r, head_l, head_r])
+        else:
+            out["plain"].append([top_l, head_l, head_r, top_r])
+    return True
 
 
 def _resolve_entrance(p, out):
@@ -317,10 +387,14 @@ def _resolve_entrance(p, out):
             "sill": None,
         })
 
+    merged = _merge_cells(out)
     rows = sorted({round(z, 5) for z in (0.0, porch_top, cell_top, canopy_top, height) if z <= height + EPS})
     # Above the canopy the wall is one face that reaches out to the two top corners of the module.
     above = bool(p["canopy"]) and canopy_top < height - EPS
-    strip_rows = rows[:-1] if above else rows
+    strip_rows = rows[:-1] if (above or merged) else rows
+    if merged:   # the cells now end at the jambs of the doors (or at their cut)
+        xs_cells = [sx0] + sorted({round(x, 5) for o in out["openings"] for x in o["cell"][:2]
+                                   if sx0 + EPS < x < sx1 - EPS}) + [sx1]
     for corner_x, inner_x in ((0.0, sx0), (width, sx1)):
         _edge_strip(out["plain"], corner_x, inner_x, strip_rows, height)
 
@@ -491,8 +565,11 @@ def _resolve_balcony(p, out):
             "sill": sill,
         })
 
+    merged = _merge_cells(out)
     if slab_on:
         rows = sorted({round(z, 5) for z in (0.0, z_bottom, z_top_slab, height)})
+        if merged:
+            rows = [z for z in rows if z < height - EPS]
         if sx0 > EPS:
             # Side strips: no vertices on the outer wall edge but its two corners.
             # With a strip under the slab the floor vertex of the slab end line is dropped:
@@ -503,18 +580,19 @@ def _resolve_balcony(p, out):
         # Vertices on the slab's top edge: the cell cut plus every opening that sits on the slab,
         # so the slab and the wall above share all their vertices (no T-junctions).
         xs = {round(sx0, 5), round(cut, 5), round(sx1, 5)}
+        if merged:
+            xs = {round(sx0, 5), round(sx1, 5)}
+            xs.update(round(x, 5) for o in out["openings"] for x in o["cell"][:2] if sx0 + EPS < x < sx1 - EPS)
         for o in out["openings"]:
             if o["z0"] - o["cell"][2] <= EPS:
                 xs.update((round(o["x0"], 5), round(o["x1"], 5)))
         xs = sorted(xs)
         if z_bottom > EPS:
-            last = len(xs) - 2
-            for i, (lo, hi) in enumerate(zip(xs, xs[1:])):
-                lo_floor = 0.0 if i == 0 else lo
-                hi_floor = width if i == last else hi
-                out["plain"].append([(lo_floor, 0.0), (hi_floor, 0.0), (hi, z_bottom), (lo, z_bottom)])
+            # the wall under the slab is one quad: the slab's bottom touches it along two corners only
+            out["plain"].append([(0.0, 0.0), (width, 0.0), (sx1, z_bottom), (sx0, z_bottom)])
         out["slab"] = {
             "xs": xs,
+            "xs_bottom": [round(sx0, 5), round(sx1, 5)],
             "z_bottom": z_bottom,
             "z_top": z_top_slab,
             "depth": max(p["slab_depth"], 0.05),
@@ -566,6 +644,8 @@ def _arch_points(x0, x1, z_spring, rise, segments, pointed=False):
 
 def _plane_face(bm, verts):
     """Create a face in an XZ plane with its normal towards -Y, whatever the input winding."""
+    # a corner that is used twice (a quad that closes to a triangle) is one vertex
+    verts = [v for i, v in enumerate(verts) if v is not verts[i - 1]]
     area = 0.0
     for a, b in zip(verts, verts[1:] + verts[:1]):
         area += a.co.x * b.co.z - b.co.x * a.co.z
@@ -1077,8 +1157,8 @@ def _build_loggia(bm, r):
     # and the facade, parapet and the front edges of the floor and ceiling need no vertex there.
     bt_l, bt_r = back_at(lx0, zt), back_at(lx1, zt)
     bf_l, bf_r = back_at(lx0, fl), back_at(lx1, fl)
-    bt_m = back_at(cut, zt) if cut is not None else None
-    bf_m = back_at(cut, fl) if cut is not None else None
+    bt_m = back.get((round(cut, 5), round(zt, 5))) if cut is not None else None
+    bf_m = back.get((round(cut, 5), round(fl, 5))) if cut is not None else None
     p_open_l, p_open_r = vert(lx0, zo, thick), vert(lx1, zo, thick)
     p_floor_l, p_floor_r = vert(lx0, fl, thick), vert(lx1, fl, thick)
 
@@ -1317,9 +1397,19 @@ def _wall_panel(bm, vert, quad, panel):
     x0, x1, z0, z1, d = panel["x0"], panel["x1"], panel["z0"], panel["z1"], panel["depth"]
     p_bl, p_br, p_tr, p_tl = vert(x0, z0), vert(x1, z0), vert(x1, z1), vert(x0, z1)
     _plane_face(bm, [c_bl, c_br, p_br, p_bl])
-    _plane_face(bm, [c_br, base_r, p_tr, p_br])
     _plane_face(bm, [base_r, base_l, p_tl, p_tr])
-    _plane_face(bm, [base_l, c_bl, p_bl, p_tl])
+    # A panel as wide as the opening stands flush with the corner of the quad: the side face would be a
+    # quad with a straight angle, so it is split into two triangles that meet at the far corner
+    if abs(c_br.co.x - x1) < EPS:
+        _plane_face(bm, [c_br, p_br, base_r])
+        _plane_face(bm, [p_br, p_tr, base_r])
+    else:
+        _plane_face(bm, [c_br, base_r, p_tr, p_br])
+    if abs(c_bl.co.x - x0) < EPS:
+        _plane_face(bm, [c_bl, p_bl, base_l])
+        _plane_face(bm, [p_bl, p_tl, base_l])
+    else:
+        _plane_face(bm, [base_l, c_bl, p_bl, p_tl])
     f_bl, f_br, f_tr, f_tl = vert(x0, z0, -d), vert(x1, z0, -d), vert(x1, z1, -d), vert(x0, z1, -d)
     _plane_face(bm, [f_bl, f_br, f_tr, f_tl])
     s = 1 if d > 0 else -1          # a recessed panel has its sides facing inwards
@@ -1435,7 +1525,8 @@ def build_shutters(p):
 
 def _build_opening(bm, vert, o, depth):
     cx0, cx1, cz0, cz1 = o["cell"]
-    c_bl, c_br, c_tr, c_tl = vert(cx0, cz0), vert(cx1, cz0), vert(cx1, cz1), vert(cx0, cz1)
+    far_l, far_r = o.get("far", (cx0, cx1))     # the top corners may lie further out than the cell
+    c_bl, c_br, c_tr, c_tl = vert(cx0, cz0), vert(cx1, cz0), vert(far_r, cz1), vert(far_l, cz1)
 
     x0, x1, z0, z_top, rise = o["x0"], o["x1"], o["z0"], o["z_top"], o["rise"]
     z_spring = z_top - rise
@@ -1492,8 +1583,10 @@ def _build_opening(bm, vert, o, depth):
         _plane_face(bm, [c_bl, outer[0], c_tl])
         _plane_face(bm, [outer[-1], c_br, c_tr])
     else:
-        _plane_face(bm, [c_bl, open_bl, spring_l, c_tl])
-        _plane_face(bm, [open_br, c_br, c_tr, spring_r])
+        if not o.get("skip_l"):
+            _plane_face(bm, [c_bl, open_bl, spring_l, c_tl])
+        if not o.get("skip_r"):
+            _plane_face(bm, [open_br, c_br, c_tr, spring_r])
 
     # Below the opening
     panel = o.get("panel")
@@ -1583,34 +1676,52 @@ def _build_opening(bm, vert, o, depth):
         _build_keystone(bm, o, band, outer, arch_row)
 
 
+def _slab_cover(bm, back, f_first, f_last, inside):
+    """The top or bottom face of a slab: the back edge keeps every vertex of the wall, the front edge only its two corners."""
+    n = len(back) - 1
+    if n == 1:
+        _oriented_face(bm, [back[0], back[1], f_last, f_first], inside)
+        return
+    _oriented_face(bm, [back[0], back[1], f_first], inside)
+    _oriented_face(bm, [back[n - 1], back[n], f_last], inside)
+    if n == 2:
+        _oriented_face(bm, [back[1], f_last, f_first], inside)
+        return
+    for j in range(1, n - 2):
+        _oriented_face(bm, [f_first, back[j], back[j + 1]], inside)
+    _oriented_face(bm, [f_first, back[n - 2], back[n - 1], f_last], inside)
+
+
 def _build_slab(bm, vert, slab):
     """A slab: a plane strip extruded out towards -Y (built pre-mirror). It has no bottom face when
     slab["bottom"] is False, for a porch that stands on the ground, and no end walls when
     slab["ends"] is False, for a band that continues into the next module. `extend_first` and
-    `extend_last` push the front edge past the end of the slab, for a mitred corner."""
+    `extend_last` push the front edge past the end of the slab, for a mitred corner.
+
+    The front face is one quad. The top (and bottom) face joins the vertices of the wall behind it with
+    the two front corners, so only the wall needs more vertices than the corners. `xs_bottom` lists the
+    vertices of the bottom edge when they differ from the top edge."""
     xs, zb, zt, depth = slab["xs"], slab["z_bottom"], slab["z_top"], slab["depth"]
-    last = len(xs) - 1
+    xs_b = slab.get("xs_bottom", xs)
     with_bottom = slab.get("bottom", True)
     with_ends = slab.get("ends", True)
     # Without a bottom face only the two end walls touch the bottom edge; a band has neither.
-    back_b = [vert(x, zb) if (with_bottom or (with_ends and i in (0, last))) else None for i, x in enumerate(xs)]
+    back_b = [vert(x, zb) if (with_bottom or (with_ends and i in (0, len(xs_b) - 1))) else None for i, x in enumerate(xs_b)]
     back_t = [vert(x, zt) for x in xs]
-    def front_x(i):
-        # a mitred end: the front edge runs on past the wall end by the slab depth
-        return xs[i] - (slab.get("extend_first", 0.0) if i == 0 else 0.0) + (slab.get("extend_last", 0.0) if i == last else 0.0)
+    x_first = xs[0] - slab.get("extend_first", 0.0)
+    x_last = xs[-1] + slab.get("extend_last", 0.0)
 
-    front_b = [bm.verts.new((front_x(i), -depth, zb)) for i in range(len(xs))]
-    front_t = [bm.verts.new((front_x(i), -depth, zt)) for i in range(len(xs))]
+    front_b = [bm.verts.new((x, -depth, zb)) for x in (x_first, x_last)]
+    front_t = [bm.verts.new((x, -depth, zt)) for x in (x_first, x_last)]
     inside = Vector(((xs[0] + xs[-1]) / 2, -depth / 2, (zb + zt) / 2))
 
-    for i in range(last):
-        _plane_face(bm, [front_b[i], front_b[i + 1], front_t[i + 1], front_t[i]])
-        _oriented_face(bm, [back_t[i], back_t[i + 1], front_t[i + 1], front_t[i]], inside)
-        if with_bottom:
-            _oriented_face(bm, [back_b[i], back_b[i + 1], front_b[i + 1], front_b[i]], inside)
+    _plane_face(bm, [front_b[0], front_b[1], front_t[1], front_t[0]])
+    _slab_cover(bm, back_t, front_t[0], front_t[1], inside)
+    if with_bottom:
+        _slab_cover(bm, back_b, front_b[0], front_b[1], inside)
     if with_ends:
         _oriented_face(bm, [back_b[0], back_t[0], front_t[0], front_b[0]], inside)
-        _oriented_face(bm, [back_b[last], back_t[last], front_t[last], front_b[last]], inside)
+        _oriented_face(bm, [back_b[-1], back_t[-1], front_t[1], front_b[1]], inside)
 
 
 def _extrude_sill(bm, top_l, top_r, bottom_l, bottom_r, depth):

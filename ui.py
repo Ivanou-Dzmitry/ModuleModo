@@ -97,6 +97,8 @@ PRESETS = (
     ("Solid Wall", {**_WINDOW, "opening": 'NONE'}),
     # The underground band: a plain wall below level 0, its top edge at Z=0.
     ("Underground", {**_WINDOW, "opening": 'NONE', "height": 0.5, "below_ground": True}),
+    # The same band above the ground: a plain wall from Z=0 up, for a visible foundation course.
+    ("Ground Band", {**_WINDOW, "opening": 'NONE', "height": 0.5}),
     # The technical floor over the last storey: a low module, 1 m by default.
     ("Attic: Plain", {**_WINDOW, "opening": 'NONE', "height": 1.0}),
     ("Attic: Window", {**_WINDOW, "height": 1.0, "open_width": 0.5, "open_height": 0.5, "sill_height": 0.25,
@@ -146,6 +148,7 @@ SECTIONS = (
     )),
     ("levels", "Underground and Attic", 'TRIA_DOWN', (
         (None, (("Underground (below Z=0)", "Underground"),)),
+        (None, (("Ground Band (above Z=0)", "Ground Band"),)),
         ("Attic", (("Plain", "Attic: Plain"), ("Window", "Attic: Window"))),
         ("Attic + Cornice", (("Plain", "Attic + Cornice: Plain"), ("Window", "Attic + Cornice: Window"))),
     )),
