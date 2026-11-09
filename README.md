@@ -35,6 +35,13 @@ The module is built the way you would model it by hand: **plane, inset, extrude*
 
 Build the installable zip with `build.ps1`.
 
+## Refboard Builder
+
+A browser tool that turns photos of a building and its facade modules into a reference board (1980×1020 PNG):
+general view, module layout with dimensions, module row and material palette. Photos stay on your computer.
+
+Open it at <https://ivanou-dzmitry.github.io/ModuleModo/tools/refboard/>. Source and usage: [tools/refboard](tools/refboard/README.md).
+
 ## License
 
 Free and open source under the [GNU GPL v3 or later](LICENSE) (the same family of licenses as Blender itself). You can use the modules you generate in any project, commercial ones included.

@@ -1,0 +1,93 @@
+:root {
+  --bg: #e9e7e2;
+  --panel: #f7f6f3;
+  --ink: #1e1e1e;
+  --grey: #77746d;
+  --line: #d4d0c8;
+  --accent: #b4553a;
+  --radius: 6px;
+  font-family: "Segoe UI", Roboto, Arial, sans-serif;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+* { box-sizing: border-box; }
+
+body { margin: 0; background: var(--bg); }
+
+.topbar {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 10px 16px; background: var(--ink); color: #fff;
+}
+.brand { font-family: Bahnschrift, "Arial Narrow", Arial, sans-serif; font-size: 20px; letter-spacing: .02em; }
+.brand span { font-size: 13px; color: #b9b6ae; margin-left: 8px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.btn {
+  display: inline-block; padding: 6px 12px; border: 1px solid var(--line); border-radius: var(--radius);
+  background: #fff; color: var(--ink); font: inherit; cursor: pointer; white-space: nowrap;
+}
+.btn:hover { border-color: var(--ink); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.small { padding: 2px 8px; font-size: 12px; }
+.btn.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+.layout { display: grid; grid-template-columns: 440px 1fr; min-height: calc(100vh - 52px); }
+
+.panels {
+  height: calc(100vh - 52px); overflow-y: auto; position: sticky; top: 52px;
+  background: var(--panel); border-right: 1px solid var(--line); padding: 8px 14px 40px;
+}
+details { border-bottom: 1px solid var(--line); padding: 8px 0 12px; }
+summary { font-family: Bahnschrift, "Arial Narrow", Arial, sans-serif; font-size: 16px; cursor: pointer; padding: 4px 0 8px; }
+
+.fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
+.fields label, .card label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--grey); }
+.fields label.wide { grid-column: 1 / -1; }
+.fields label.check { flex-direction: row; align-items: center; gap: 6px; }
+
+input[type=text], input[type=number], input[type=date], select {
+  font: inherit; color: var(--ink); padding: 5px 7px; border: 1px solid var(--line); border-radius: 4px; background: #fff; width: 100%;
+}
+input[type=color] { width: 100%; height: 30px; padding: 0 2px; border: 1px solid var(--line); border-radius: 4px; background: #fff; }
+
+.hint { margin: 6px 0; font-size: 12px; color: var(--grey); }
+
+.drop {
+  display: block; padding: 18px 12px; text-align: center; border: 1.5px dashed var(--line); border-radius: var(--radius);
+  color: var(--grey); cursor: pointer; background: #fff;
+}
+.drop.over, .drop:hover { border-color: var(--accent); color: var(--accent); }
+
+.card {
+  display: grid; grid-template-columns: 150px 1fr; gap: 10px; align-items: start;
+  margin: 10px 0; padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: var(--radius);
+}
+.card .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.card .meta .wide { grid-column: 1 / -1; }
+.card .tools { grid-column: 1 / -1; display: flex; gap: 6px; justify-content: flex-end; }
+
+canvas.crop { width: 150px; border: 1px solid var(--ink); cursor: grab; touch-action: none; display: block; background: #ddd; }
+canvas.crop:active { cursor: grabbing; }
+
+.brushes { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
+.facade { display: grid; gap: 2px; background: var(--ink); border: 2px solid var(--ink); }
+.cell {
+  position: relative; background: #fff center / cover no-repeat; min-height: 34px; cursor: pointer;
+  font: 11px Consolas, monospace; color: #fff; display: flex; align-items: flex-start; justify-content: flex-start;
+}
+.cell span { background: rgba(30,30,30,.75); padding: 1px 3px; margin: 2px; }
+.cell.empty span { background: none; color: var(--grey); }
+.cell:hover { outline: 2px solid var(--accent); outline-offset: -2px; }
+.row-label { font: 11px Consolas, monospace; color: var(--grey); margin: 6px 0 2px; }
+
+.swatch { display: grid; grid-template-columns: 44px 1fr auto; gap: 8px; align-items: center; margin: 6px 0; }
+
+.preview { padding: 20px; display: flex; align-items: flex-start; justify-content: center; }
+#sheet { width: 100%; max-width: 1980px; height: auto; box-shadow: 0 2px 16px rgba(0,0,0,.18); background: #f1efea; }
+
+@media (max-width: 1000px) {
+  .layout { grid-template-columns: 1fr; }
+  .panels { position: static; height: auto; }
+}
