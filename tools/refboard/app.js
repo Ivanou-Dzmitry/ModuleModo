@@ -1,6 +1,7 @@
 'use strict';
 
 // ---------- constants ----------
+const VERSION = '0.0.1';
 const W = 1980, H = 1020, M = 60;
 // Sheet colours: bg and ink come from the project, the rest are mixed from them in updateTheme().
 const COL = { bg: '#f1efea', ink: '#1e1e1e', grey: '#8a8780', light: '#cdc9c1', paper: '#e4e1da', veil: 'rgba(241,239,234,0.18)' };
@@ -787,6 +788,8 @@ function download(blob, name) {
 
 const fileBase = () => (state.title || 'refboard').replace(/[^\w.-]+/g, '_');
 
+document.getElementById('version').textContent = `v${VERSION}`;
+
 document.querySelectorAll('[data-lang]').forEach(b => b.addEventListener('click', () => {
   uiLang = b.dataset.lang;
   saveUiLang();
@@ -802,7 +805,7 @@ document.getElementById('exportPng').addEventListener('click', () => {
 });
 
 document.getElementById('saveProject').addEventListener('click', () => {
-  download(new Blob([JSON.stringify(state)], { type: 'application/json' }), `${fileBase()}.refboard.json`);
+  download(new Blob([JSON.stringify({ ...state, version: VERSION })], { type: 'application/json' }), `${fileBase()}.refboard.json`);
 });
 
 document.getElementById('loadProject').addEventListener('change', async e => {

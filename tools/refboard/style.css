@@ -22,6 +22,7 @@ body { margin: 0; background: var(--bg); }
 }
 .brand { font-family: Bahnschrift, "Arial Narrow", Arial, sans-serif; font-size: 20px; letter-spacing: .02em; }
 .brand span { font-size: 13px; color: #b9b6ae; margin-left: 8px; }
+.brand .version { margin-left: 4px; padding: 1px 6px; border: 1px solid #55524c; border-radius: 4px; font-family: Consolas, monospace; font-size: 12px; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .lang { display: flex; gap: 2px; margin-right: 8px; }
 .lang .btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
