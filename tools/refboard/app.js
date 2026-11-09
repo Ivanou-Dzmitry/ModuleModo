@@ -2,7 +2,8 @@
 
 // ---------- constants ----------
 const W = 1980, H = 1020, M = 60;
-const COL = { bg: '#f1efea', ink: '#1e1e1e', grey: '#8a8780', light: '#cdc9c1' };
+// Sheet colours: bg and ink come from the project, the rest are mixed from them in updateTheme().
+const COL = { bg: '#f1efea', ink: '#1e1e1e', grey: '#8a8780', light: '#cdc9c1', paper: '#e4e1da', veil: 'rgba(241,239,234,0.18)' };
 const SANS = 'Bahnschrift, "DIN Alternate", "Arial Narrow", Arial, sans-serif';
 const TEXT = '"Segoe UI", Roboto, Arial, sans-serif';
 const MONO = 'Consolas, "JetBrains Mono", Menlo, monospace';
@@ -27,6 +28,9 @@ function defaultState() {
     author: '',
     date: today,
     accent: '#b4553a',
+    bg: '#f1efea',
+    ink: '#1e1e1e',
+    sheetLang: 'en',
     grid: 3,
     groundH: 4,
     upperH: 3,
@@ -45,10 +49,24 @@ let state = defaultState();
 let brush = '';            // module id painted on the facade grid
 let nextId = 1;
 
+const S = (key, ...args) => lookup(SHEET_TEXT, state.sheetLang, key, args);
 const byId = id => state.modules.find(m => m.id === id);
 const floors = () => [state.groundH, ...Array(state.upperFloors).fill(state.upperH)];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const fmt = v => (Math.round(v * 10) / 10).toFixed(1);
+
+const rgb = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) || 0);
+const toHex = c => '#' + c.map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+const mix = (a, b, t) => toHex(rgb(a).map((v, i) => v + (rgb(b)[i] - v) * t));
+
+function updateTheme() {
+  COL.bg = state.bg || '#f1efea';
+  COL.ink = state.ink || '#1e1e1e';
+  COL.grey = mix(COL.ink, COL.bg, 0.45);
+  COL.light = mix(COL.ink, COL.bg, 0.75);
+  COL.paper = mix(COL.bg, COL.ink, 0.06);
+  COL.veil = `rgba(${rgb(COL.bg).join(',')},0.18)`;
+}
 
 // ---------- images ----------
 const images = new Map();
@@ -147,7 +165,7 @@ function section(x, y, num, title) {
 }
 
 function placeholder(x, y, w, h, label) {
-  ctx.fillStyle = '#e4e1da'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = COL.paper; ctx.fillRect(x, y, w, h);
   ctx.strokeStyle = COL.light; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
   text(label, x + w / 2, y + h / 2, F.monoS, COL.grey, 'center', 'middle');
 }
@@ -159,13 +177,12 @@ function drawHeader() {
   text((state.subtitle || '').toUpperCase(), tx, 64, F.h);
   text(state.note || '', tx, 90, F.txt, COL.grey);
 
-  const fl = floors();
-  const floorsLabel = fl.length > 2
-    ? `GF ${fmt(fl[0])} m · 1–${fl.length - 1}F ${fmt(state.upperH)} m`
-    : fl.length === 2 ? `GF ${fmt(fl[0])} m · 1F ${fmt(state.upperH)} m` : `GF ${fmt(fl[0])} m`;
-  const meta = [['GRID', `${fmt(state.grid)} m module`], ['FLOORS', floorsLabel]];
-  if (state.author) meta.push(['AUTHOR', state.author]);
-  meta.push(['DATE', state.date || '']);
+  const meta = [
+    [S('grid'), S('gridValue', fmt(state.grid))],
+    [S('floors'), S('floorsValue', fmt(state.groundH), fmt(state.upperH), state.upperFloors)],
+  ];
+  if (state.author) meta.push([S('author'), state.author]);
+  meta.push([S('date'), state.date || '']);
 
   let x = W - M;
   for (const [k, v] of meta.reverse()) {
@@ -178,16 +195,16 @@ function drawHeader() {
 
 // Returns the width used by the photo.
 function drawOverview(top, boxH) {
-  section(M, top - 18, '01', 'General view');
+  section(M, top - 18, '01', S('general'));
   const ov = state.overview, img = ov && getImage(ov.src);
   const w = overviewWidth(boxH);
   if (img) {
     drawCover(ctx, img, M, top, w, boxH, ov.crop);
     ctx.strokeStyle = COL.ink; ctx.lineWidth = 1; ctx.strokeRect(M - 0.5, top - 0.5, w + 1, boxH + 1);
   } else {
-    placeholder(M, top, w, boxH, 'загрузите фото фасада');
+    placeholder(M, top, w, boxH, S('noOverview'));
   }
-  text('Street elevation · photo reference', M, top + boxH + 22, F.txt, COL.grey);
+  text(S('photoRef'), M, top + boxH + 22, F.txt, COL.grey);
   return w;
 }
 
@@ -200,11 +217,11 @@ function overviewWidth(boxH) {
 function drawCell(x, y, w, h, mod) {
   const img = mod && getImage(mod.src);
   if (img) drawCover(ctx, img, x, y, w, h, mod.crop);
-  else { ctx.fillStyle = '#e4e1da'; ctx.fillRect(x, y, w, h); }
+  else { ctx.fillStyle = COL.paper; ctx.fillRect(x, y, w, h); }
 }
 
 function drawLayout(x0, x1, top) {
-  section(x0, top - 18, '02', 'Module layout');
+  section(x0, top - 18, '02', S('layout'));
   const fl = floors(), g = state.grid, n = state.bays;
   const roofM = state.roof ? 1.6 : 0;
   const totalM = fl.reduce((a, b) => a + b, 0) + roofM;
@@ -232,7 +249,7 @@ function drawLayout(x0, x1, top) {
   }
 
   // lift the photos a little so the line work reads on top
-  ctx.fillStyle = 'rgba(241,239,234,0.18)';
+  ctx.fillStyle = COL.veil;
   ctx.fillRect(gx0, gyTop, gx1 - gx0, gyBot - gyTop);
 
   for (let b = 0; b <= n; b++) line(gx0 + b * mw, gyTop, gx0 + b * mw, gyBot);
@@ -261,32 +278,34 @@ function drawLayout(x0, x1, top) {
       const yy = gyTop - rh * k / 6, d = 44 * k / 6;
       line(gx0 - 14 + d, yy, gx1 + 14 - d, yy, COL.light);
     }
-    text('ROOF', (gx0 + gx1) / 2, gyTop - rh / 2, F.monoS, COL.grey, 'center', 'middle');
+    text(S('roof'), (gx0 + gx1) / 2, gyTop - rh / 2, F.monoS, COL.grey, 'center', 'middle');
   }
 
   for (let b = 0; b < n; b++) dimH(gx0 + b * mw, gx0 + (b + 1) * mw, gyBot + 12, fmt(g));
-  dimH(gx0, gx1, gyBot + 34, `${fmt(n * g)} m`, gyBot + 4);
+  dimH(gx0, gx1, gyBot + 34, `${fmt(n * g)} ${S('m')}`, gyBot + 4);
   let acc = 0;
   levels.forEach((y, i) => {
     text(`${i ? '+' : '±'}${acc.toFixed(2)}`, gx0 - 26, y, F.monoS, COL.grey, 'right', 'middle');
     ctx.fillStyle = COL.grey; ctx.beginPath();
     ctx.moveTo(gx0 - 20, y - 5); ctx.lineTo(gx0 - 14, y); ctx.lineTo(gx0 - 20, y + 5); ctx.fill();
     if (i < fl.length) {
-      dimV(gx1 + 34, levels[i + 1], y, `${fmt(fl[i])} m`, gx1 + 4);
+      dimV(gx1 + 34, levels[i + 1], y, `${fmt(fl[i])} ${S('m')}`, gx1 + 4);
       acc += fl[i];
     }
   });
 }
 
 function drawPalette(x0, top) {
-  section(x0, top - 18, '04', 'Materials');
+  section(x0, top - 18, '04', S('materials'));
   const sw = 46;
   let y = top;
   for (const p of state.palette.slice(0, 6)) {
-    ctx.fillStyle = p.hex; ctx.fillRect(x0, y, sw, sw);
+    const img = p.src && getImage(p.src);
+    if (img) drawCover(ctx, img, x0, y, sw, sw, p.crop);
+    else { ctx.fillStyle = p.hex; ctx.fillRect(x0, y, sw, sw); }
     ctx.strokeStyle = COL.ink; ctx.lineWidth = 1; ctx.strokeRect(x0 + 0.5, y + 0.5, sw - 1, sw - 1);
     text(fitText(p.label || '', F.txt, 230), x0 + sw + 16, y + 18, F.txt);
-    text(p.hex.toUpperCase(), x0 + sw + 16, y + 38, F.monoS, COL.grey);
+    text((p.src ? `${S('texture')} · ` : '') + p.hex.toUpperCase(), x0 + sw + 16, y + 38, F.monoS, COL.grey);
     y += sw + 12;
   }
 }
@@ -294,11 +313,11 @@ function drawPalette(x0, top) {
 function drawModules() {
   const MY = 590;
   line(M, MY - 46, W - M, MY - 46, COL.light);
-  section(M, MY, '03', 'Modules');
+  section(M, MY, '03', S('modules'));
   const mods = state.modules;
-  const sizes = [...new Set(mods.map(m => `${fmt(m.w)} × ${fmt(m.h)} m`))].join(' · ');
-  if (mods.length) text(`${mods.length} modules · ${sizes}`, W - M, MY, F.txt, COL.grey, 'right');
-  if (!mods.length) { placeholder(M, MY + 30, W - 2 * M, 330, 'добавьте фото модулей'); return; }
+  const sizes = [...new Set(mods.map(m => `${fmt(m.w)} × ${fmt(m.h)} ${S('m')}`))].join(' · ');
+  if (mods.length) text(S('modulesCount', mods.length, sizes), W - M, MY, F.txt, COL.grey, 'right');
+  if (!mods.length) { placeholder(M, MY + 30, W - 2 * M, 330, S('noModules')); return; }
 
   const base = H - 62, dim = 40, minGap = 30;
   const maxH = Math.max(...mods.map(m => m.h));
@@ -312,7 +331,7 @@ function drawModules() {
   for (const m of mods) {
     const w = Math.round(m.w * um), h = Math.round(m.h * um), y0 = base - h;
     const img = getImage(m.src);
-    if (img) drawCover(ctx, img, x, y0, w, h, m.crop); else placeholder(x, y0, w, h, 'нет фото');
+    if (img) drawCover(ctx, img, x, y0, w, h, m.crop); else placeholder(x, y0, w, h, S('noPhoto'));
     ctx.strokeStyle = COL.ink; ctx.lineWidth = 1; ctx.strokeRect(x - 0.5, y0 - 0.5, w + 1, h + 1);
 
     const ty = MY + 36, room = w + dim + gap - 16;
@@ -321,13 +340,14 @@ function drawModules() {
     text(fitText(m.name || '', F.h, room - cw), x + cw, ty, F.h);
     text(fitText(m.sub || '', F.txt, room), x, ty + 22, F.txt, COL.grey);
 
-    dimH(x, x + w, base + 26, `${fmt(m.w)} m`, base + 4);
-    dimV(x + w + 26, y0, base, `${fmt(m.h)} m`, x + w + 4);
+    dimH(x, x + w, base + 26, `${fmt(m.w)} ${S('m')}`, base + 4);
+    dimV(x + w + 26, y0, base, `${fmt(m.h)} ${S('m')}`, x + w + 4);
     x += w + dim + gap;
   }
 }
 
 function render() {
+  updateTheme();
   ctx.fillStyle = COL.bg; ctx.fillRect(0, 0, W, H);
   drawHeader();
   const TOP = 172, BOX_H = 340;
@@ -469,13 +489,28 @@ function checkbox(label, obj, key, onChange) {
 function buildProject() {
   const box = document.getElementById('projectFields');
   box.replaceChildren(
-    field('Название дома', state, 'title', 'text', { wide: true }),
-    field('Подзаголовок', state, 'subtitle', 'text', { wide: true }),
-    field('Описание', state, 'note', 'text', { wide: true }),
-    field('Автор', state, 'author'),
-    field('Дата', state, 'date', 'date'),
-    field('Акцентный цвет', state, 'accent', 'color', { onChange: () => { applyAccent(); scheduleRender(); } }),
+    field(t('title'), state, 'title', 'text', { wide: true }),
+    field(t('subtitle'), state, 'subtitle', 'text', { wide: true }),
+    field(t('note'), state, 'note', 'text', { wide: true }),
+    field(t('author'), state, 'author'),
+    field(t('date'), state, 'date', 'date'),
+    field(t('accent'), state, 'accent', 'color', { onChange: () => { applyAccent(); scheduleRender(); } }),
+    field(t('bg'), state, 'bg', 'color'),
+    field(t('ink'), state, 'ink', 'color'),
+    el('label', {}, t('defaults'), el('button', {
+      class: 'btn small',
+      onclick: () => { const d = defaultState(); state.bg = d.bg; state.ink = d.ink; state.accent = d.accent; buildProject(); applyAccent(); scheduleRender(); },
+    }, t('reset'))),
+    langSelect(),
   );
+}
+
+function langSelect() {
+  const sel = el('select');
+  [['en', 'English'], ['ru', 'Русский']].forEach(([v, n]) => sel.append(el('option', { value: v }, n)));
+  sel.value = state.sheetLang;
+  sel.addEventListener('change', () => { state.sheetLang = sel.value; scheduleRender(); });
+  return el('label', {}, t('sheetLang'), sel);
 }
 
 function buildGrid() {
@@ -484,12 +519,12 @@ function buildGrid() {
     onChange: () => { if (rebuild) buildLayout(); scheduleRender(); },
   });
   document.getElementById('gridFields').replaceChildren(
-    num('Шаг сетки, м', 'grid', 1, 10, 0.5),
-    num('Пролётов по ширине', 'bays', 1, 16, 1, true),
-    num('Высота 1-го этажа, м', 'groundH', 2, 8, 0.5),
-    num('Высота верхних этажей, м', 'upperH', 2, 8, 0.5),
-    num('Верхних этажей', 'upperFloors', 0, 6, 1, true),
-    checkbox('Крыша на схеме', state, 'roof'),
+    num(t('grid'), 'grid', 1, 10, 0.5),
+    num(t('bays'), 'bays', 1, 16, 1, true),
+    num(t('groundH'), 'groundH', 2, 8, 0.5),
+    num(t('upperH'), 'upperH', 2, 8, 0.5),
+    num(t('upperFloors'), 'upperFloors', 0, 6, 1, true),
+    checkbox(t('roof'), state, 'roof'),
   );
 }
 
@@ -501,7 +536,7 @@ function buildOverview() {
     state.overview = { src: await readImageFile(input.files[0]), crop: newCrop() };
     buildOverview(); scheduleRender();
   });
-  const drop = el('label', { class: 'drop' }, state.overview ? 'Заменить фото фасада' : 'Перетащите фото фасада сюда или нажмите', input);
+  const drop = el('label', { class: 'drop' }, state.overview ? t('ovReplace') : t('ovDrop'), input);
   makeDropZone(drop, async files => {
     state.overview = { src: await readImageFile(files[0]), crop: newCrop() };
     buildOverview(); scheduleRender();
@@ -512,16 +547,16 @@ function buildOverview() {
     const aspect = img ? overviewWidth(340) / 340 : 4 / 3;
     children.push(el('div', { class: 'card' },
       cropEditor(state.overview, aspect),
-      el('div', {}, el('p', { class: 'hint' }, 'Кадр общего вида на листе.'),
-        el('button', { class: 'btn small', onclick: () => { state.overview = null; buildOverview(); scheduleRender(); } }, 'Удалить'))));
+      el('div', {}, el('p', { class: 'hint' }, t('ovHint')),
+        el('button', { class: 'btn small', onclick: () => { state.overview = null; buildOverview(); scheduleRender(); } }, t('remove')))));
   }
   box.replaceChildren(...children);
 }
 
 function moduleCard(m, i) {
   const sizeSel = el('select');
-  SIZE_PRESETS.forEach(([w, h]) => sizeSel.append(el('option', { value: `${w}x${h}` }, `${w} × ${h} м`)));
-  sizeSel.append(el('option', { value: 'custom' }, 'свой размер'));
+  SIZE_PRESETS.forEach(([w, h]) => sizeSel.append(el('option', { value: `${w}x${h}` }, t('sizeOpt', w, h))));
+  sizeSel.append(el('option', { value: 'custom' }, t('customSize')));
   const preset = SIZE_PRESETS.find(([w, h]) => w === m.w && h === m.h);
   sizeSel.value = preset ? `${m.w}x${m.h}` : 'custom';
   sizeSel.addEventListener('change', () => {
@@ -530,15 +565,15 @@ function moduleCard(m, i) {
   });
 
   const meta = el('div', { class: 'meta' },
-    field('Код', m, 'code', 'text', { onChange: () => { buildLayout(); scheduleRender(); } }),
-    el('label', {}, 'Размер (Ш × В)', sizeSel),
-    field('Название', m, 'name', 'text', { wide: true }),
-    field('Подпись', m, 'sub', 'text', { wide: true }),
+    field(t('code'), m, 'code', 'text', { onChange: () => { buildLayout(); scheduleRender(); } }),
+    el('label', {}, t('size'), sizeSel),
+    field(t('name'), m, 'name', 'text', { wide: true }),
+    field(t('caption'), m, 'sub', 'text', { wide: true }),
   );
   if (sizeSel.value === 'custom') {
     const onChange = () => { buildModules(); scheduleRender(); };
-    meta.append(field('Ширина, м', m, 'w', 'number', { attrs: { min: 0.5, step: 0.5 }, onChange }),
-      field('Высота, м', m, 'h', 'number', { attrs: { min: 0.5, step: 0.5 }, onChange }));
+    meta.append(field(t('width'), m, 'w', 'number', { attrs: { min: 0.5, step: 0.5 }, onChange }),
+      field(t('height'), m, 'h', 'number', { attrs: { min: 0.5, step: 0.5 }, onChange }));
   }
 
   const move = d => {
@@ -561,7 +596,7 @@ function moduleCard(m, i) {
     el('div', { class: 'tools' },
       el('button', { class: 'btn small', onclick: () => move(-1) }, '←'),
       el('button', { class: 'btn small', onclick: () => move(1) }, '→'),
-      el('button', { class: 'btn small', onclick: remove }, 'Удалить')));
+      el('button', { class: 'btn small', onclick: remove }, t('remove'))));
 }
 
 function buildModules() {
@@ -583,17 +618,17 @@ async function addModules(files) {
 
 function buildLayout() {
   const box = document.getElementById('layoutPanel');
-  if (!state.modules.length) { box.replaceChildren(el('p', { class: 'hint' }, 'Сначала добавьте модули.')); return; }
+  if (!state.modules.length) { box.replaceChildren(el('p', { class: 'hint' }, t('addModulesFirst'))); return; }
 
   const brushBtn = (id, label) => el('button', {
     class: 'btn small' + (brush === id ? ' active' : ''),
     onclick: () => { brush = id; buildLayout(); },
   }, label);
   const brushes = el('div', { class: 'brushes' },
-    ...state.modules.map(m => brushBtn(m.id, m.code || '?')), brushBtn('', 'Ластик'));
+    ...state.modules.map(m => brushBtn(m.id, m.code || '?')), brushBtn('', t('eraser')));
 
   const fillerSel = el('select');
-  fillerSel.append(el('option', { value: '' }, '— нет —'));
+  fillerSel.append(el('option', { value: '' }, t('none')));
   state.modules.forEach(m => fillerSel.append(el('option', { value: m.id }, `${m.code} ${m.name}`)));
   fillerSel.value = state.filler;
   fillerSel.addEventListener('change', () => { state.filler = fillerSel.value; buildLayout(); scheduleRender(); });
@@ -606,7 +641,7 @@ function buildLayout() {
       const key = `${f}_${b}`;
       const mod = byId(state.layout[key]);
       const shown = mod || byId(state.filler);
-      const cell = el('div', { class: 'cell' + (mod ? '' : ' empty'), title: `этаж ${f + 1}, пролёт ${b + 1}` },
+      const cell = el('div', { class: 'cell' + (mod ? '' : ' empty'), title: t('cellTitle', f + 1, b + 1) },
         el('span', {}, mod ? mod.code : shown ? '·' : ''));
       cell.style.minHeight = `${Math.round(fl[f] * 14)}px`;
       if (shown) cell.style.backgroundImage = `url(${shown.src})`;
@@ -623,40 +658,111 @@ function buildLayout() {
   box.replaceChildren(
     brushes, grid,
     el('div', { class: 'fields', style: 'margin-top:10px' },
-      el('label', { class: 'wide' }, 'Заполнитель (пустые клетки и место под низким модулем)', fillerSel)),
+      el('label', { class: 'wide' }, t('filler'), fillerSel)),
     el('div', { class: 'tools', style: 'margin-top:8px;display:flex;gap:6px' },
-      el('button', { class: 'btn small', onclick: () => { state.layout = {}; buildLayout(); scheduleRender(); } }, 'Очистить схему')));
+      el('button', { class: 'btn small', onclick: () => { state.layout = {}; buildLayout(); scheduleRender(); } }, t('clearLayout'))));
+}
+
+// Average colour of an image, so a texture material also has a HEX code.
+function averageHex(src) {
+  return new Promise(resolve => {
+    const im = new Image();
+    im.onload = () => {
+      const cv = document.createElement('canvas'); cv.width = cv.height = 16;
+      const c = cv.getContext('2d', { willReadFrequently: true });
+      c.drawImage(im, 0, 0, 16, 16);
+      const d = c.getImageData(0, 0, 16, 16).data, sum = [0, 0, 0];
+      for (let i = 0; i < d.length; i += 4) { sum[0] += d[i]; sum[1] += d[i + 1]; sum[2] += d[i + 2]; }
+      resolve('#' + sum.map(v => Math.round(v / 256).toString(16).padStart(2, '0')).join(''));
+    };
+    im.onerror = () => resolve('#888888');
+    im.src = src;
+  });
+}
+
+async function setTexture(p, file) {
+  p.src = await readImageFile(file);
+  p.crop = newCrop();
+  p.hex = await averageHex(p.src);
+  if (!p.label) p.label = file.name.replace(/\.[^.]+$/, '');
+}
+
+async function addTextureMaterials(files) {
+  for (const file of files) {
+    if (!file.type.startsWith('image/') || state.palette.length >= 6) continue;
+    const p = { hex: '#888888', label: '' };
+    await setTexture(p, file);
+    state.palette.push(p);
+  }
+  buildPalette(); scheduleRender();
+}
+
+function imagePicker(label, onFiles, multiple = false) {
+  const input = el('input', { type: 'file', accept: 'image/*', hidden: '' });
+  if (multiple) input.multiple = true;
+  input.addEventListener('change', () => { if (input.files.length) onFiles([...input.files]); input.value = ''; });
+  return el('label', { class: 'btn small' }, label, input);
 }
 
 function buildPalette() {
   const box = document.getElementById('palettePanel');
   const rows = state.palette.map((p, i) => {
-    const color = el('input', { type: 'color' }); color.value = p.hex;
-    color.addEventListener('input', () => { p.hex = color.value; scheduleRender(); });
-    const label = el('input', { type: 'text', placeholder: 'Материал' }); label.value = p.label;
+    let swatch;
+    if (p.src) {
+      swatch = cropEditor(p, 1);
+      swatch.classList.add('mini');
+    } else {
+      swatch = el('input', { type: 'color' }); swatch.value = p.hex;
+      swatch.addEventListener('input', () => { p.hex = swatch.value; scheduleRender(); });
+    }
+    const label = el('input', { type: 'text', placeholder: t('material') }); label.value = p.label;
     label.addEventListener('input', () => { p.label = label.value; scheduleRender(); });
-    return el('div', { class: 'swatch' }, color, label,
-      el('button', { class: 'btn small', onclick: () => { state.palette.splice(i, 1); buildPalette(); scheduleRender(); } }, '×'));
+    const photo = imagePicker(p.src ? t('otherPhoto') : t('photo'), async files => {
+      await setTexture(p, files[0]); buildPalette(); scheduleRender();
+    });
+    const tools = el('div', { class: 'swatch-tools' }, photo);
+    if (p.src) {
+      tools.append(el('button', {
+        class: 'btn small',
+        onclick: () => { delete p.src; delete p.crop; buildPalette(); scheduleRender(); },
+      }, t('colour')));
+    }
+    tools.append(el('button', { class: 'btn small', onclick: () => { state.palette.splice(i, 1); buildPalette(); scheduleRender(); } }, '×'));
+    return el('div', { class: 'swatch' }, swatch, label, tools);
   });
+
+  // Extraction refreshes the plain colours and keeps the texture materials.
   const extract = () => {
-    const hexes = extractPalette();
-    state.palette = hexes.map((hex, i) => ({ hex, label: state.palette[i]?.label || `Материал ${i + 1}` }));
+    const textures = state.palette.filter(p => p.src);
+    const colours = state.palette.filter(p => !p.src);
+    const hexes = extractPalette().slice(0, 6 - textures.length);
+    const isDefault = label => !label || /^(Материал|Material) \d+$/.test(label);
+    state.palette = [...textures, ...hexes.map((hex, i) => {
+      const old = colours[i]?.label;
+      return { hex, label: isDefault(old) ? S('materialN', textures.length + i + 1) : old };
+    })];
     buildPalette(); scheduleRender();
   };
+  const full = state.palette.length >= 6;
+  const drop = el('div', { class: 'drop small' }, t('matDrop'));
+  makeDropZone(drop, addTextureMaterials);
   box.replaceChildren(
     el('div', { class: 'brushes' },
-      el('button', { class: 'btn small', onclick: extract }, 'Взять цвета с фото'),
+      el('button', { class: 'btn small', onclick: extract }, t('takeColours')),
       el('button', {
         class: 'btn small',
-        onclick: () => { if (state.palette.length < 6) state.palette.push({ hex: '#888888', label: '' }); buildPalette(); scheduleRender(); },
-      }, '+ цвет')),
+        onclick: () => { if (!full) state.palette.push({ hex: '#888888', label: '' }); buildPalette(); scheduleRender(); },
+      }, t('addColour')),
+      imagePicker(t('addMaterial'), addTextureMaterials, true)),
+    ...(full ? [] : [drop]),
     ...rows,
-    el('p', { class: 'hint' }, 'До 6 цветов. Подпишите материал: кирпич, камень, рама, стекло…'));
+    el('p', { class: 'hint' }, t('matHint')));
 }
 
 function applyAccent() { document.documentElement.style.setProperty('--accent', state.accent); }
 
 function buildAll() {
+  applyStaticText();
   applyAccent();
   buildProject(); buildGrid(); buildOverview(); buildModules(); buildLayout(); buildPalette();
   scheduleRender();
@@ -681,6 +787,12 @@ function download(blob, name) {
 
 const fileBase = () => (state.title || 'refboard').replace(/[^\w.-]+/g, '_');
 
+document.querySelectorAll('[data-lang]').forEach(b => b.addEventListener('click', () => {
+  uiLang = b.dataset.lang;
+  saveUiLang();
+  buildAll();
+}));
+
 document.getElementById('moduleFiles').addEventListener('change', e => { addModules([...e.target.files]); e.target.value = ''; });
 makeDropZone(document.getElementById('moduleDrop'), addModules);
 
@@ -703,7 +815,7 @@ document.getElementById('loadProject').addEventListener('change', async e => {
     brush = '';
     buildAll();
   } catch (err) {
-    alert('Не удалось открыть проект: ' + err.message);
+    alert(t('loadError') + err.message);
   }
 });
 

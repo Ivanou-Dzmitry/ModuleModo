@@ -5,7 +5,8 @@ A one-page tool that turns photos of a building and its facade modules into a cl
 
 ## How to use
 
-1. **Project**: building name, subtitle, author, date, accent colour.
+1. **Project**: building name, subtitle, author, date, accent colour, sheet background and text colour,
+   sheet language (English or Russian).
 2. **Grid and floors**: grid step (3 m), number of bays, ground floor height (4 m), upper floor height (3 m),
    number of upper floors.
 3. **General view**: drop a photo of the whole facade and frame it.
@@ -14,15 +15,19 @@ A one-page tool that turns photos of a building and its facade modules into a cl
    drag to move, mouse wheel to zoom, double-click to reset.
 5. **Facade layout**: pick a module and click the grid cells. Right-click clears a cell. Choose a filler module
    (usually the brick wall) for empty cells and for the gap under a module that is lower than its floor.
-6. **Materials**: press **Взять цвета с фото** to take up to 6 colours from the module photos, then label them.
-7. **Скачать PNG** saves the board. **Сохранить проект** saves a `.json` file with the photos inside, so
-   you can open it later with **Открыть проект**.
+6. **Materials**: up to 6 swatches. Press **Take colours from photos** to take colours from the module photos,
+   or add a texture photo (brick, plaster, roof tiles): it is cut to a square that you can move and zoom.
+7. **Download PNG** saves the board. **Save project** saves a `.json` file with the photos inside, so
+   you can open it later with **Open project**.
+
+The interface speaks Russian and English: switch with **RU / EN** in the top bar. The sheet language is a separate
+project setting, so a Russian interface can produce an English sheet.
 
 Tip: straighten the perspective of your photos first (Photoshop: Perspective Crop; GIMP: Perspective tool).
 
 ## Publish on GitHub Pages
 
-1. Put `index.html`, `app.js` and `style.css` in the root of a repository (or in a `docs/` folder).
+1. Put `index.html`, `i18n.js`, `app.js` and `style.css` in the root of a repository (or in a `docs/` folder).
 2. Repository **Settings → Pages → Build and deployment → Deploy from a branch**, branch `main`,
    folder `/ (root)` or `/docs`.
 3. After a minute the tool is live at `https://<user>.github.io/<repo>/`.

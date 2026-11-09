@@ -22,7 +22,9 @@ body { margin: 0; background: var(--bg); }
 }
 .brand { font-family: Bahnschrift, "Arial Narrow", Arial, sans-serif; font-size: 20px; letter-spacing: .02em; }
 .brand span { font-size: 13px; color: #b9b6ae; margin-left: 8px; }
-.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.lang { display: flex; gap: 2px; margin-right: 8px; }
+.lang .btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 .btn {
   display: inline-block; padding: 6px 12px; border: 1px solid var(--line); border-radius: var(--radius);
@@ -83,6 +85,9 @@ canvas.crop:active { cursor: grabbing; }
 .row-label { font: 11px Consolas, monospace; color: var(--grey); margin: 6px 0 2px; }
 
 .swatch { display: grid; grid-template-columns: 44px 1fr auto; gap: 8px; align-items: center; margin: 6px 0; }
+.swatch-tools { display: flex; gap: 4px; }
+canvas.crop.mini { width: 44px; height: 44px; }
+.drop.small { padding: 10px; font-size: 12px; margin: 6px 0; }
 
 .preview { padding: 20px; display: flex; align-items: flex-start; justify-content: center; }
 #sheet { width: 100%; max-width: 1980px; height: auto; box-shadow: 0 2px 16px rgba(0,0,0,.18); background: #f1efea; }

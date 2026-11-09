@@ -8,49 +8,53 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">Refboard Builder <span>фасад и модули → лист 1980×1020</span></div>
+    <div class="brand">Refboard Builder <span data-i18n="brandSub">фасад и модули → лист 1980×1020</span></div>
     <div class="actions">
-      <label class="btn">Открыть проект<input type="file" id="loadProject" accept=".json" hidden></label>
-      <button class="btn" id="saveProject">Сохранить проект</button>
-      <button class="btn primary" id="exportPng">Скачать PNG</button>
+      <div class="lang">
+        <button class="btn small" data-lang="ru">RU</button>
+        <button class="btn small" data-lang="en">EN</button>
+      </div>
+      <label class="btn"><span data-i18n="openProject">Открыть проект</span><input type="file" id="loadProject" accept=".json" hidden></label>
+      <button class="btn" id="saveProject" data-i18n="saveProject">Сохранить проект</button>
+      <button class="btn primary" id="exportPng" data-i18n="exportPng">Скачать PNG</button>
     </div>
   </header>
 
   <div class="layout">
     <aside class="panels">
       <details open>
-        <summary>1. Проект</summary>
+        <summary data-i18n="s1">1. Проект</summary>
         <div class="fields" id="projectFields"></div>
       </details>
 
       <details open>
-        <summary>2. Сетка и этажи</summary>
+        <summary data-i18n="s2">2. Сетка и этажи</summary>
         <div class="fields" id="gridFields"></div>
       </details>
 
       <details open>
-        <summary>3. Общий вид</summary>
+        <summary data-i18n="s3">3. Общий вид</summary>
         <div id="overviewPanel"></div>
       </details>
 
       <details open>
-        <summary>4. Модули</summary>
+        <summary data-i18n="s4">4. Модули</summary>
         <label class="drop" id="moduleDrop">
-          Перетащите фото модулей сюда или нажмите, чтобы выбрать
+          <span data-i18n="moduleDrop">Перетащите фото модулей сюда или нажмите, чтобы выбрать</span>
           <input type="file" id="moduleFiles" accept="image/*" multiple hidden>
         </label>
-        <p class="hint">В рамке: тяните мышью — сдвиг, колесо — масштаб, двойной клик — сброс.</p>
+        <p class="hint" data-i18n="cropHint">В рамке: тяните мышью — сдвиг, колесо — масштаб, двойной клик — сброс.</p>
         <div id="moduleList"></div>
       </details>
 
       <details open>
-        <summary>5. Схема фасада</summary>
-        <p class="hint">Выберите модуль и кликайте по клеткам. Правый клик — очистить клетку.</p>
+        <summary data-i18n="s5">5. Схема фасада</summary>
+        <p class="hint" data-i18n="layoutHint">Выберите модуль и кликайте по клеткам. Правый клик — очистить клетку.</p>
         <div id="layoutPanel"></div>
       </details>
 
       <details open>
-        <summary>6. Материалы</summary>
+        <summary data-i18n="s6">6. Материалы</summary>
         <div id="palettePanel"></div>
       </details>
     </aside>
@@ -60,6 +64,7 @@
     </main>
   </div>
 
+  <script src="i18n.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
