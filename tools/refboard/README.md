@@ -17,11 +17,12 @@ A one-page tool that turns photos of a building and its facade modules into a cl
    (usually the brick wall) for empty cells and for the gap under a module that is lower than its floor.
 6. **Materials**: up to 6 swatches. Press **Take colours from photos** to take colours from the module photos,
    or add a texture photo (brick, plaster, roof tiles): it is cut to a square that you can move and zoom.
+   Swatches fill the column on their own (1–3 in a column, 4 as 2 × 2, 5–6 as 3 × 2), or set the side in px.
 7. **Download PNG** saves the board. **Save project** saves a `.json` file with the photos inside, so
    you can open it later with **Open project**.
 
 The interface speaks Russian and English: switch with **RU / EN** in the top bar. The sheet language is a separate
-project setting, so a Russian interface can produce an English sheet.
+project setting, so a Russian interface can produce an English sheet. The **?** button opens a short help.
 
 Tip: straighten the perspective of your photos first (Photoshop: Perspective Crop; GIMP: Perspective tool).
 

@@ -1,7 +1,7 @@
 'use strict';
 
 // ---------- constants ----------
-const VERSION = '0.0.1';
+const VERSION = '0.0.2';
 const W = 1980, H = 1020, M = 60;
 // Sheet colours: bg and ink come from the project, the rest are mixed from them in updateTheme().
 const COL = { bg: '#f1efea', ink: '#1e1e1e', grey: '#8a8780', light: '#cdc9c1', paper: '#e4e1da', veil: 'rgba(241,239,234,0.18)' };
@@ -32,6 +32,7 @@ function defaultState() {
     bg: '#f1efea',
     ink: '#1e1e1e',
     sheetLang: 'en',
+    swatchSize: 0,         // material swatch side in px, 0 = automatic
     grid: 3,
     groundH: 4,
     upperH: 3,
@@ -296,19 +297,52 @@ function drawLayout(x0, x1, top) {
   });
 }
 
+// Materials fill their column: 1–3 swatches stack with labels on the right,
+// 4 make a 2 × 2 grid and 5–6 a 3 × 2 grid with labels under each swatch.
+const PAL_W = 400, PAL_H = 352, PAL_GAP = 20, PAL_LABEL_H = 50;
+
+function drawSwatch(p, x, y, s) {
+  const img = p.src && getImage(p.src);
+  if (img) drawCover(ctx, img, x, y, s, s, p.crop);
+  else { ctx.fillStyle = p.hex; ctx.fillRect(x, y, s, s); }
+  ctx.strokeStyle = COL.ink; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, s - 1, s - 1);
+}
+
+const swatchCode = p => (p.src ? `${S('texture')} · ` : '') + p.hex.toUpperCase();
+
 function drawPalette(x0, top) {
   section(x0, top - 18, '04', S('materials'));
-  const sw = 46;
-  let y = top;
-  for (const p of state.palette.slice(0, 6)) {
-    const img = p.src && getImage(p.src);
-    if (img) drawCover(ctx, img, x0, y, sw, sw, p.crop);
-    else { ctx.fillStyle = p.hex; ctx.fillRect(x0, y, sw, sw); }
-    ctx.strokeStyle = COL.ink; ctx.lineWidth = 1; ctx.strokeRect(x0 + 0.5, y + 0.5, sw - 1, sw - 1);
-    text(fitText(p.label || '', F.txt, 230), x0 + sw + 16, y + 18, F.txt);
-    text((p.src ? `${S('texture')} · ` : '') + p.hex.toUpperCase(), x0 + sw + 16, y + 38, F.monoS, COL.grey);
-    y += sw + 12;
+  const items = state.palette.slice(0, 6), n = items.length;
+
+  // A size set by hand wins over the automatic one, but never overflows the column.
+  const pick = (auto, fit) => Math.floor(state.swatchSize > 0 ? Math.min(state.swatchSize, fit) : auto);
+
+  if (n <= 3) {
+    const fit = (PAL_H - (n - 1) * PAL_GAP) / n;
+    const s = pick(Math.min(140, fit), Math.min(fit, PAL_W - 120));
+    const tw = PAL_W - s - 18;
+    items.forEach((p, i) => {
+      const y = top + i * (s + PAL_GAP);
+      drawSwatch(p, x0, y, s);
+      text(fitText(p.label || '', F.h, tw), x0 + s + 18, y + s / 2 - 4, F.h);
+      text(fitText(swatchCode(p), F.monoS, tw), x0 + s + 18, y + s / 2 + 18, F.monoS, COL.grey);
+    });
+    return;
   }
+
+  const cols = n === 4 ? 2 : 3, rows = 2;
+  const fit = Math.min((PAL_W - (cols - 1) * PAL_GAP) / cols,
+    (PAL_H - rows * PAL_LABEL_H - (rows - 1) * PAL_GAP) / rows);
+  const s = pick(fit, fit);
+  const cellW = (PAL_W - (cols - 1) * PAL_GAP) / cols;
+  items.forEach((p, i) => {
+    const x = Math.round(x0 + (i % cols) * (cellW + PAL_GAP));
+    const y = top + Math.floor(i / cols) * (s + PAL_LABEL_H + PAL_GAP);
+    drawSwatch(p, x, y, s);
+    text(fitText(p.label || '', F.txt, cellW), x, y + s + 20, F.txt);
+    const code = textWidth(swatchCode(p), F.monoS) <= cellW ? swatchCode(p) : p.hex.toUpperCase();
+    text(code, x, y + s + 38, F.monoS, COL.grey);
+  });
 }
 
 function drawModules() {
@@ -354,7 +388,7 @@ function render() {
   const TOP = 172, BOX_H = 340;
   const photoW = drawOverview(TOP, BOX_H);
   const hasPalette = state.palette.length > 0;
-  const px0 = W - M - 290;
+  const px0 = W - M - PAL_W;
   if (hasPalette) drawPalette(px0, TOP);
   drawLayout(M + photoW + 90, hasPalette ? px0 - 70 : W - M, TOP);
   drawModules();
@@ -756,6 +790,8 @@ function buildPalette() {
       }, t('addColour')),
       imagePicker(t('addMaterial'), addTextureMaterials, true)),
     ...(full ? [] : [drop]),
+    el('div', { class: 'fields' },
+      field(t('swatchSize'), state, 'swatchSize', 'number', { wide: true, attrs: { min: 0, max: 300, step: 10, placeholder: t('auto') } })),
     ...rows,
     el('p', { class: 'hint' }, t('matHint')));
 }
@@ -789,6 +825,7 @@ function download(blob, name) {
 const fileBase = () => (state.title || 'refboard').replace(/[^\w.-]+/g, '_');
 
 document.getElementById('version').textContent = `v${VERSION}`;
+document.getElementById('helpOpen').addEventListener('click', () => document.getElementById('help').showModal());
 
 document.querySelectorAll('[data-lang]').forEach(b => b.addEventListener('click', () => {
   uiLang = b.dataset.lang;

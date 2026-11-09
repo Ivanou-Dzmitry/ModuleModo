@@ -17,8 +17,14 @@
       <label class="btn"><span data-i18n="openProject">Открыть проект</span><input type="file" id="loadProject" accept=".json" hidden></label>
       <button class="btn" id="saveProject" data-i18n="saveProject">Сохранить проект</button>
       <button class="btn primary" id="exportPng" data-i18n="exportPng">Скачать PNG</button>
+      <button class="btn help-btn" id="helpOpen" data-i18n-title="help" title="Помощь">?</button>
     </div>
   </header>
+
+  <dialog id="help">
+    <div id="helpBody"></div>
+    <form method="dialog"><button class="btn primary" data-i18n="close">Закрыть</button></form>
+  </dialog>
 
   <div class="layout">
     <aside class="panels">

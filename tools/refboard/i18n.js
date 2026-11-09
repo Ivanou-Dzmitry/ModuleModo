@@ -32,6 +32,8 @@ const UI_TEXT = {
     takeColours: 'Взять цвета с фото', addColour: '+ цвет', addMaterial: '+ материал (фото)',
     matHint: 'До 6 материалов: цвет или фото текстуры. Фото обрезается квадратом — тяните мышью, колесо — масштаб.',
     loadError: 'Не удалось открыть проект: ',
+    help: 'Помощь', close: 'Закрыть',
+    swatchSize: 'Сторона квадрата на листе, px (0 или пусто — авто)', auto: 'авто',
   },
   en: {
     brandSub: 'facade and modules → 1980×1020 sheet',
@@ -63,6 +65,8 @@ const UI_TEXT = {
     takeColours: 'Take colours from photos', addColour: '+ colour', addMaterial: '+ material (photo)',
     matHint: 'Up to 6 materials: a colour or a texture photo. The photo is cut to a square: drag to move, wheel to zoom.',
     loadError: 'Could not open the project: ',
+    help: 'Help', close: 'Close',
+    swatchSize: 'Swatch side on the sheet, px (0 or empty = auto)', auto: 'auto',
   },
 };
 
@@ -92,6 +96,59 @@ const SHEET_TEXT = {
   },
 };
 
+// Help dialog content (trusted static HTML).
+const HELP_HTML = {
+  ru: `
+    <h2>Как собрать рефборд</h2>
+    <ol>
+      <li><b>Проект.</b> Название дома, автор, дата. Здесь же цвета листа (акцент, фон, текст) и язык листа.</li>
+      <li><b>Сетка и этажи.</b> Шаг сетки (обычно 3 м), сколько пролётов по ширине, высота 1-го этажа (4 м)
+        и верхних (3 м), сколько верхних этажей.</li>
+      <li><b>Общий вид.</b> Перетащите фото всего фасада и выберите кадр.</li>
+      <li><b>Модули.</b> Перетащите фото окон, дверей, балкона, стены. Каждому задайте код (<code>W-01</code>,
+        <code>D-01</code>, <code>BR-01</code>), название, подпись и размер: 3 × 3 м, 3 × 4 м или свой.</li>
+      <li><b>Схема фасада.</b> Выберите модуль кнопкой и кликайте по клеткам. Правый клик очищает клетку.
+        Заполнитель (обычно кирпичная стена) закрывает пустые клетки и место под низким модулем.</li>
+      <li><b>Материалы.</b> До 6 образцов: «Взять цвета с фото» или фото текстуры (кирпич, штукатурка,
+        черепица) — оно обрежется квадратом. Размер квадратов подбирается сам или задаётся вручную.</li>
+      <li><b>Скачать PNG</b> — готовый лист 1980×1020. <b>Сохранить проект</b> — файл <code>.json</code>
+        с фото внутри, его можно открыть позже.</li>
+    </ol>
+    <h3>Кадрирование в рамке</h3>
+    <p>Тяните мышью — сдвиг, колесо — масштаб, двойной клик — сброс.</p>
+    <h3>Советы</h3>
+    <ul>
+      <li>Выровняйте перспективу фото заранее (Photoshop: Perspective Crop, GIMP: Perspective).</li>
+      <li>Одинаковые окна — один модуль. Обычно на дом хватает 5–8 модулей.</li>
+      <li>Фото никуда не отправляются: всё работает в вашем браузере.</li>
+    </ul>`,
+  en: `
+    <h2>How to build a reference board</h2>
+    <ol>
+      <li><b>Project.</b> Building name, author, date. Sheet colours (accent, background, text) and sheet language
+        are here too.</li>
+      <li><b>Grid and floors.</b> Grid step (usually 3 m), number of bays, ground floor height (4 m),
+        upper floor height (3 m), number of upper floors.</li>
+      <li><b>General view.</b> Drop a photo of the whole facade and choose the frame.</li>
+      <li><b>Modules.</b> Drop photos of windows, doors, a balcony, a wall. Give each one a code (<code>W-01</code>,
+        <code>D-01</code>, <code>BR-01</code>), a name, a caption and a size: 3 × 3 m, 3 × 4 m or custom.</li>
+      <li><b>Facade layout.</b> Pick a module with its button and click the cells. Right-click clears a cell.
+        The filler (usually the brick wall) covers empty cells and the gap under a low module.</li>
+      <li><b>Materials.</b> Up to 6 swatches: "Take colours from photos" or a texture photo (brick, plaster,
+        roof tiles), cut to a square. The swatch size is automatic or set by hand.</li>
+      <li><b>Download PNG</b> gives the 1980×1020 sheet. <b>Save project</b> gives a <code>.json</code> file
+        with the photos inside, to open later.</li>
+    </ol>
+    <h3>Framing a photo</h3>
+    <p>Drag to move, mouse wheel to zoom, double-click to reset.</p>
+    <h3>Tips</h3>
+    <ul>
+      <li>Straighten the photo perspective first (Photoshop: Perspective Crop, GIMP: Perspective).</li>
+      <li>Identical windows are one module. A house usually needs 5–8 modules.</li>
+      <li>Photos never leave your computer: everything runs in your browser.</li>
+    </ul>`,
+};
+
 const LANGS = ['ru', 'en'];
 
 function lookup(table, lang, key, args) {
@@ -115,6 +172,9 @@ const t = (key, ...args) => lookup(UI_TEXT, uiLang, key, args);
 function applyStaticText() {
   document.documentElement.lang = uiLang;
   document.querySelectorAll('[data-i18n]').forEach(e => { e.textContent = t(e.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-title]').forEach(e => { e.title = t(e.dataset.i18nTitle); });
+  const help = document.getElementById('helpBody');
+  if (help) help.innerHTML = HELP_HTML[uiLang] || HELP_HTML.en;
   document.querySelectorAll('[data-lang]').forEach(b => b.classList.toggle('active', b.dataset.lang === uiLang));
 }
 
