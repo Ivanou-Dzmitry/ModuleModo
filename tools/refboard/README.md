@@ -21,6 +21,8 @@ A one-page tool that turns photos of a building and its facade modules into a cl
    Swatches fill the column on their own (1–3 in a column, 4 as 2 × 2, 5–6 as 3 × 2), or set the side in px.
 7. **3D view** (button above the sheet): the house as a textured box with a gable roof. Drag to orbit, wheel to zoom.
    **Snapshot to "General view"** puts the current angle into section 01.
+   **Download 3D PNG** saves a 1980×1020 frame of the view with the sheet header. Walls get a simple ambient
+   occlusion: a soft contact shadow on the ground, darker at the base and under the eaves.
 8. **Download PNG** saves the board. **Save project** saves a `.json` file with the photos inside, so
    you can open it later with **Open project**.
 

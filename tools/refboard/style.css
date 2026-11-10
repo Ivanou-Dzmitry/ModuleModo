@@ -112,8 +112,9 @@ canvas.crop.mini { width: 44px; height: 44px; }
 label.inline { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--grey); }
 label.inline input[type=color] { width: 44px; height: 26px; }
 #sheet { width: 100%; height: auto; box-shadow: 0 2px 16px rgba(0,0,0,.18); background: #f1efea; display: block; }
-#view3d { width: 100%; aspect-ratio: 1980 / 1020; display: block; cursor: grab; touch-action: none;
-  box-shadow: 0 2px 16px rgba(0,0,0,.18); background: #f1efea; }
+.view3d-wrap { position: relative; box-shadow: 0 2px 16px rgba(0,0,0,.18); }
+#view3d { width: 100%; aspect-ratio: 1980 / 1020; display: block; cursor: grab; touch-action: none; background: #f1efea; }
+#view3dHeader { position: absolute; left: 0; top: 0; width: 100%; pointer-events: none; }
 #view3d:active { cursor: grabbing; }
 
 @media (max-width: 1000px) {

@@ -1,7 +1,7 @@
 'use strict';
 
 // ---------- constants ----------
-const VERSION = '0.0.4';
+const VERSION = '0.0.5';
 const W = 1980, H = 1020, M = 60;
 // Sheet colours: bg and ink come from the project, the rest are mixed from them in updateTheme().
 const COL = { bg: '#f1efea', ink: '#1e1e1e', grey: '#8a8780', light: '#cdc9c1', paper: '#e4e1da', veil: 'rgba(241,239,234,0.18)' };
@@ -428,7 +428,7 @@ function render() {
   if (hasPalette) drawPalette(px0, TOP);
   drawLayout(M + photoW + 90, hasPalette ? px0 - 70 : W - M, TOP);
   drawModules();
-  if (typeof View3D !== 'undefined') View3D.invalidate();
+  if (typeof View3D !== 'undefined') { View3D.invalidate(); drawHeaderOverlay(); }
 }
 
 let pending = false;
@@ -880,16 +880,44 @@ document.getElementById('version').textContent = `v${VERSION}`;
 function showView(is3d) {
   if (is3d && !View3D.available()) { alert(t('noWebgl')); return; }
   document.getElementById('sheet').hidden = is3d;
-  document.getElementById('view3d').hidden = !is3d;
+  document.getElementById('view3dWrap').hidden = !is3d;
   document.getElementById('bar3d').hidden = !is3d;
   document.getElementById('hint3d').hidden = !is3d;
   document.getElementById('tabSheet').classList.toggle('active', !is3d);
   document.getElementById('tab3d').classList.toggle('active', is3d);
   View3D.show(is3d);
+  if (is3d) drawHeaderOverlay();
+}
+
+// The sheet header (title, meta, rule) drawn over the 3D view at the same scale as on the sheet.
+const HEADER_H = 130;
+function drawHeaderOverlay() {
+  const ov = document.getElementById('view3dHeader');
+  if (document.getElementById('view3dWrap').hidden || !ov.clientWidth) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  ov.width = Math.round(ov.clientWidth * dpr);
+  ov.height = Math.round(ov.width * HEADER_H / W);
+  ov.style.height = `${ov.clientWidth * HEADER_H / W}px`;
+  ov.getContext('2d').drawImage(sheet, 0, 0, W, HEADER_H, 0, 0, ov.width, ov.height);
+}
+window.addEventListener('resize', drawHeaderOverlay);
+
+// 3D view at the sheet size with the sheet header on top.
+async function export3d() {
+  render();
+  const im = new Image();
+  im.src = View3D.snapshot(W, H);
+  await im.decode();
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const c = cv.getContext('2d');
+  c.drawImage(im, 0, 0);
+  c.drawImage(sheet, 0, 0, W, HEADER_H, 0, 0, W, HEADER_H);
+  cv.toBlob(b => download(b, `${fileBase()}_3d.png`), 'image/png');
 }
 document.getElementById('tabSheet').addEventListener('click', () => showView(false));
 document.getElementById('tab3d').addEventListener('click', () => showView(true));
 document.getElementById('resetView').addEventListener('click', () => View3D.resetView());
+document.getElementById('export3d').addEventListener('click', export3d);
 document.getElementById('roofColour').addEventListener('input', e => { state.roofColor = e.target.value; View3D.invalidate(); });
 document.getElementById('snapshot3d').addEventListener('click', () => {
   state.overview = { src: View3D.snapshot(), crop: newCrop() };

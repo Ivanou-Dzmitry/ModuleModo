@@ -2,6 +2,7 @@
 
 // 3D preview on plain WebGL2: the house is a box textured with the facade layouts,
 // with a gable roof. Front = front layout, both sides = side layout, back = filler wall.
+// Simple fake AO: a soft contact shadow on the ground and wall darkening at the base and under the eaves.
 const View3D = (() => {
   const PX_PER_M = 64;        // facade texture resolution
   const OVERHANG = 0.3;       // roof overhang, m
@@ -34,19 +35,26 @@ const View3D = (() => {
   // ---------- GL setup ----------
   const VS = `#version 300 es
     in vec3 aPos; in vec3 aNor; in vec2 aUv;
-    uniform mat4 uMvp; out vec3 vNor; out vec2 vUv;
-    void main() { gl_Position = uMvp * vec4(aPos, 1.0); vNor = aNor; vUv = aUv; }`;
+    uniform mat4 uMvp; out vec3 vNor; out vec2 vUv; out vec3 vPos;
+    void main() { gl_Position = uMvp * vec4(aPos, 1.0); vNor = aNor; vUv = aUv; vPos = aPos; }`;
   const FS = `#version 300 es
     precision mediump float;
-    in vec3 vNor; in vec2 vUv; uniform sampler2D uTex; uniform vec3 uLight; out vec4 outColor;
+    in vec3 vNor; in vec2 vUv; in vec3 vPos;
+    uniform sampler2D uTex; uniform vec3 uLight; uniform int uAo; uniform float uTop;
+    out vec4 outColor;
     void main() {
+      vec4 c = texture(uTex, vUv);
       float l = 0.58 + 0.42 * max(dot(normalize(vNor), uLight), 0.0);
-      outColor = vec4(texture(uTex, vUv).rgb * l, 1.0);
+      float ao = 1.0;
+      if (uAo > 0) ao *= mix(0.6, 1.0, smoothstep(0.0, 1.4, vPos.y));          // base of the wall
+      if (uAo > 1) ao *= mix(0.72, 1.0, smoothstep(0.0, 0.7, uTop - vPos.y));  // under the eaves
+      outColor = vec4(c.rgb * l * ao, c.a);
     }`;
 
   function init() {
     canvas = document.getElementById('view3d');
-    gl = canvas.getContext('webgl2', { antialias: true, preserveDrawingBuffer: true });
+    // opaque canvas: the blended contact shadow must not leave see-through pixels in exports
+    gl = canvas.getContext('webgl2', { antialias: true, preserveDrawingBuffer: true, alpha: false });
     if (!gl) return false;
     const sh = (type, src) => {
       const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
@@ -59,8 +67,10 @@ const View3D = (() => {
     loc = {
       pos: gl.getAttribLocation(prog, 'aPos'), nor: gl.getAttribLocation(prog, 'aNor'), uv: gl.getAttribLocation(prog, 'aUv'),
       mvp: gl.getUniformLocation(prog, 'uMvp'), tex: gl.getUniformLocation(prog, 'uTex'), light: gl.getUniformLocation(prog, 'uLight'),
+      ao: gl.getUniformLocation(prog, 'uAo'), top: gl.getUniformLocation(prog, 'uTop'),
     };
     gl.enable(gl.DEPTH_TEST);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     bindControls();
     return true;
@@ -125,6 +135,18 @@ const View3D = (() => {
     return cv;
   }
 
+  // Soft dark blob under the house: the footprint blurred out by `margin` metres on each side.
+  function contactShadow(w, d, margin) {
+    const k = 512 / (w + 2 * margin);
+    const cv = document.createElement('canvas');
+    cv.width = 512; cv.height = Math.max(8, Math.round((d + 2 * margin) * k));
+    const c = cv.getContext('2d');
+    const far = 10000;                       // draw the shape off-canvas and keep only its blurred shadow
+    c.shadowColor = 'rgba(0,0,0,0.5)'; c.shadowBlur = margin * k * 0.9; c.shadowOffsetX = far;
+    c.fillRect(margin * k * 0.55 - far, margin * k * 0.55, (w + margin * 0.9) * k, (d + margin * 0.9) * k);
+    return cv;
+  }
+
   // ---------- mesh ----------
   function pushQuad(arr, p, n, uv) {
     const [u0, v0, u1, v1] = uv;
@@ -133,11 +155,12 @@ const View3D = (() => {
   }
   function pushTri(arr, p, n, t) { for (let i = 0; i < 3; i++) arr.push(...p[i], ...n, ...t[i]); }
 
-  function mesh(tex, data) {
+  // ao: 0 none, 1 darken the base, 2 base and under the eaves; blend: transparent overlay drawn last
+  function mesh(tex, data, ao = 0, blend = false) {
     const buf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.STATIC_DRAW);
-    meshes.push({ tex, buf, count: data.length / 8 });
+    meshes.push({ tex, buf, count: data.length / 8, ao, blend });
   }
 
   function rebuild() {
@@ -149,7 +172,7 @@ const View3D = (() => {
     dims = { w, d, h, r };
     const X = w / 2, Z = d / 2;
 
-    const front = [], back = [], sides = [], gables = [], roof = [], ground = [];
+    const front = [], back = [], sides = [], gables = [], roof = [], ground = [], blob = [];
     pushQuad(front, [[-X, 0, Z], [X, 0, Z], [X, h, Z], [-X, h, Z]], [0, 0, 1], [0, 0, 1, 1]);
     pushQuad(back, [[X, 0, -Z], [-X, 0, -Z], [-X, h, -Z], [X, h, -Z]], [0, 0, -1], [0, 0, n, h / g]);
     // seen from the right, the front corner is on the left, as on the sheet; the left side is its mirror
@@ -170,14 +193,19 @@ const View3D = (() => {
     }
     const G = Math.max(w, d) * 3;
     pushQuad(ground, [[-G, 0, G], [G, 0, G], [G, 0, -G], [-G, 0, -G]], [0, 1, 0], [0, 0, 1, 1]);
+    const MB = 1.6, bx = X + MB, bz = Z + MB;
+    pushQuad(blob, [[-bx, 0.01, bz], [bx, 0.01, bz], [bx, 0.01, -bz], [-bx, 0.01, -bz]], [0, 1, 0], [0, 0, 1, 1]);
 
-    mesh(texture(facadeCanvas(state.layout, n)), front);
-    mesh(texture(facadeCanvas(state.depthBays > 0 ? state.layoutSide : {}, sideN)), sides);
+    // eaves run along the front and the back, so only those walls get the under-eaves term
+    const eaves = r > 0 ? 2 : 1;
+    mesh(texture(facadeCanvas(state.layout, n)), front, eaves);
+    mesh(texture(facadeCanvas(state.depthBays > 0 ? state.layoutSide : {}, sideN)), sides, 1);
     const tile = texture(fillerTile(), true);
-    mesh(tile, back);
+    mesh(tile, back, eaves);
     if (gables.length) mesh(tile, gables);
     mesh(texture(colourCanvas(state.roofColor || '#8a4b3b')), roof);
     mesh(texture(colourCanvas(mix(state.bg || '#f1efea', state.ink || '#1e1e1e', 0.12))), ground);
+    mesh(texture(contactShadow(w, d, MB)), blob, 0, true);
     dirty = false;
   }
 
@@ -204,8 +232,11 @@ const View3D = (() => {
     const L = [0.5, 0.75, 0.6], ll = Math.hypot(...L);
     gl.uniform3f(loc.light, L[0] / ll, L[1] / ll, L[2] / ll);
     gl.uniform1i(loc.tex, 0);
+    gl.uniform1f(loc.top, h);
     gl.activeTexture(gl.TEXTURE0);
     for (const m of meshes) {
+      gl.uniform1i(loc.ao, m.ao);
+      if (m.blend) { gl.enable(gl.BLEND); gl.depthMask(false); } else { gl.disable(gl.BLEND); gl.depthMask(true); }
       gl.bindBuffer(gl.ARRAY_BUFFER, m.buf);
       gl.enableVertexAttribArray(loc.pos); gl.vertexAttribPointer(loc.pos, 3, gl.FLOAT, false, 32, 0);
       gl.enableVertexAttribArray(loc.nor); gl.vertexAttribPointer(loc.nor, 3, gl.FLOAT, false, 32, 12);
@@ -213,6 +244,7 @@ const View3D = (() => {
       gl.bindTexture(gl.TEXTURE_2D, m.tex);
       gl.drawArrays(gl.TRIANGLES, 0, m.count);
     }
+    gl.disable(gl.BLEND); gl.depthMask(true);
   }
 
   function fitCanvas() {
@@ -257,11 +289,11 @@ const View3D = (() => {
     show(on) { visible = on; requestDraw(); },
     invalidate() { dirty = true; requestDraw(); },
     resetView() { cam.yaw = 0.6; cam.pitch = 0.28; cam.zoom = 1; requestDraw(); },
-    // Renders the current view at the general-view aspect and returns a PNG data URL.
-    snapshot() {
+    // Renders the current view at w×h (default: the general-view aspect) and returns a PNG data URL.
+    snapshot(w = SNAP_W, h = SNAP_H) {
       const ow = canvas.width, oh = canvas.height;
-      canvas.width = SNAP_W; canvas.height = SNAP_H;
-      draw(SNAP_W, SNAP_H);
+      canvas.width = w; canvas.height = h;
+      draw(w, h);
       const url = canvas.toDataURL('image/png');
       canvas.width = ow; canvas.height = oh;
       requestDraw();
