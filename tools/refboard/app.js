@@ -1,7 +1,7 @@
 'use strict';
 
 // ---------- constants ----------
-const VERSION = '0.0.2';
+const VERSION = '0.0.3';
 const W = 1980, H = 1020, M = 60;
 // Sheet colours: bg and ink come from the project, the rest are mixed from them in updateTheme().
 const COL = { bg: '#f1efea', ink: '#1e1e1e', grey: '#8a8780', light: '#cdc9c1', paper: '#e4e1da', veil: 'rgba(241,239,234,0.18)' };
@@ -41,7 +41,9 @@ function defaultState() {
     roof: true,
     overview: null,        // { src, crop }
     modules: [],           // { id, code, name, sub, w, h, src, crop }
-    layout: {},            // "floor_bay" -> module id, floor 0 = ground
+    depthBays: 2,          // bays of the side elevation, 0 = no side elevation
+    layout: {},            // front: "floor_bay" -> module id, floor 0 = ground
+    layoutSide: {},        // side elevation, same keys
     filler: '',            // module id used for empty cells and gaps
     palette: [],           // { hex, label }
   };
@@ -49,6 +51,7 @@ function defaultState() {
 
 let state = defaultState();
 let brush = '';            // module id painted on the facade grid
+let facade = 'front';      // elevation edited in the layout panel: 'front' | 'side'
 let nextId = 1;
 
 const S = (key, ...args) => lookup(SHEET_TEXT, state.sheetLang, key, args);
@@ -222,26 +225,16 @@ function drawCell(x, y, w, h, mod) {
   else { ctx.fillStyle = COL.paper; ctx.fillRect(x, y, w, h); }
 }
 
-function drawLayout(x0, x1, top) {
-  section(x0, top - 18, '02', S('layout'));
-  const fl = floors(), g = state.grid, n = state.bays;
-  const roofM = state.roof ? 1.6 : 0;
-  const totalM = fl.reduce((a, b) => a + b, 0) + roofM;
-  const labelW = 70, dimW = 60;
-  const u = Math.min((x1 - x0 - labelW - dimW) / (n * g), 300 / totalM);
-  const mw = g * u, gx0 = x0 + labelW, gx1 = gx0 + n * mw;
-  const gyBot = Math.round(top + 20 + totalM * u);
-
-  const levels = [gyBot];
-  fl.forEach((h, i) => levels.push(levels[i] - h * u));
-  const gyTop = levels[levels.length - 1];
-  const filler = byId(state.filler);
+// One elevation: cells, grid, code tags and the bay dimensions under it. Returns its right edge.
+function drawFacade(layout, gx0, n, u, levels, filler) {
+  const fl = floors(), g = state.grid, mw = g * u, gx1 = gx0 + n * mw;
+  const gyBot = levels[0], gyTop = levels[levels.length - 1];
 
   for (let f = 0; f < fl.length; f++) {
     const cellTop = levels[f + 1], cellH = levels[f] - levels[f + 1];
     for (let b = 0; b < n; b++) {
       const x = gx0 + b * mw;
-      const mod = byId(state.layout[`${f}_${b}`]);
+      const mod = byId(layout[`${f}_${b}`]);
       if (!mod) { drawCell(x, cellTop, mw, cellH, filler); continue; }
       // A module lower than the floor sits at the top; the filler fills the rest.
       const mh = Math.min(cellH, mod.h * u);
@@ -260,38 +253,80 @@ function drawLayout(x0, x1, top) {
 
   for (let f = 0; f < fl.length; f++) {
     for (let b = 0; b < n; b++) {
-      const mod = byId(state.layout[`${f}_${b}`]) || filler;
+      const mod = byId(layout[`${f}_${b}`]) || filler;
       if (!mod || mw < 44) continue;
       const code = mod.code || '?';
       const x = gx0 + b * mw + 6, y = levels[f + 1] + 5;
       const tw = textWidth(code, F.monoS);
-      ctx.fillStyle = mod === filler && !state.layout[`${f}_${b}`] ? COL.ink : state.accent;
+      ctx.fillStyle = mod === filler && !layout[`${f}_${b}`] ? COL.ink : state.accent;
       ctx.fillRect(x - 2, y, tw + 6, 17);
       text(code, x + 1, y + 9, F.monoS, COL.bg, 'left', 'middle');
     }
   }
 
-  if (state.roof) {
-    const rh = roofM * u;
-    ctx.strokeStyle = COL.ink; ctx.lineWidth = 1; ctx.beginPath();
-    ctx.moveTo(gx0 - 14, gyTop); ctx.lineTo(gx0 + 30, gyTop - rh); ctx.lineTo(gx1 - 30, gyTop - rh); ctx.lineTo(gx1 + 14, gyTop);
-    ctx.stroke();
-    for (let k = 1; k < 6; k++) {
-      const yy = gyTop - rh * k / 6, d = 44 * k / 6;
-      line(gx0 - 14 + d, yy, gx1 + 14 - d, yy, COL.light);
-    }
-    text(S('roof'), (gx0 + gx1) / 2, gyTop - rh / 2, F.monoS, COL.grey, 'center', 'middle');
-  }
-
   for (let b = 0; b < n; b++) dimH(gx0 + b * mw, gx0 + (b + 1) * mw, gyBot + 12, fmt(g));
   dimH(gx0, gx1, gyBot + 34, `${fmt(n * g)} ${S('m')}`, gyBot + 4);
+  return gx1;
+}
+
+// Front: the roof slope seen from the eaves side, a trapezoid with tile courses.
+function drawRoofFront(gx0, gx1, gyTop, rh) {
+  ctx.strokeStyle = COL.ink; ctx.lineWidth = 1; ctx.beginPath();
+  ctx.moveTo(gx0 - 14, gyTop); ctx.lineTo(gx0 + 30, gyTop - rh); ctx.lineTo(gx1 - 30, gyTop - rh); ctx.lineTo(gx1 + 14, gyTop);
+  ctx.stroke();
+  for (let k = 1; k < 6; k++) {
+    const yy = gyTop - rh * k / 6, d = 44 * k / 6;
+    line(gx0 - 14 + d, yy, gx1 + 14 - d, yy, COL.light);
+  }
+  text(S('roof'), (gx0 + gx1) / 2, gyTop - rh / 2, F.monoS, COL.grey, 'center', 'middle');
+}
+
+// Side: the gable, a triangle over the end wall.
+function drawRoofSide(gx0, gx1, gyTop, rh) {
+  const mx = (gx0 + gx1) / 2, half = (gx1 - gx0) / 2 + 14;
+  ctx.strokeStyle = COL.ink; ctx.lineWidth = 1; ctx.beginPath();
+  ctx.moveTo(gx0 - 14, gyTop); ctx.lineTo(mx, gyTop - rh); ctx.lineTo(gx1 + 14, gyTop);
+  ctx.stroke();
+  for (let k = 1; k < 6; k++) {
+    const yy = gyTop - rh * k / 6, hw = half * (1 - k / 6);
+    line(mx - hw, yy, mx + hw, yy, COL.light);
+  }
+}
+
+function drawLayout(x0, x1, top) {
+  section(x0, top - 18, '02', S('layout'));
+  const fl = floors(), g = state.grid, n = state.bays, d = state.depthBays > 0 ? state.depthBays : 0;
+  const roofM = state.roof ? 1.6 : 0;
+  const totalM = fl.reduce((a, b) => a + b, 0) + roofM;
+  const labelW = 70, dimW = 60, sideGap = d ? 50 : 0;
+  // with a side elevation the captions under the dimensions need a little height
+  const u = Math.min((x1 - x0 - labelW - dimW - sideGap) / ((n + d) * g), (d ? 285 : 300) / totalM);
+  const gx0 = x0 + labelW;
+  const gyBot = Math.round(top + 20 + totalM * u);
+
+  const levels = [gyBot];
+  fl.forEach((h, i) => levels.push(levels[i] - h * u));
+  const gyTop = levels[levels.length - 1];
+  const filler = byId(state.filler);
+
+  const fx1 = drawFacade(state.layout, gx0, n, u, levels, filler);
+  if (state.roof) drawRoofFront(gx0, fx1, gyTop, roofM * u);
+  let right = fx1;
+  if (d) {
+    const sx0 = fx1 + sideGap;
+    right = drawFacade(state.layoutSide, sx0, d, u, levels, filler);
+    if (state.roof) drawRoofSide(sx0, right, gyTop, roofM * u);
+    text(S('front'), gx0, gyBot + 56, F.monoS, COL.grey);
+    text(S('side'), sx0, gyBot + 56, F.monoS, COL.grey);
+  }
+
   let acc = 0;
   levels.forEach((y, i) => {
     text(`${i ? '+' : '±'}${acc.toFixed(2)}`, gx0 - 26, y, F.monoS, COL.grey, 'right', 'middle');
     ctx.fillStyle = COL.grey; ctx.beginPath();
     ctx.moveTo(gx0 - 20, y - 5); ctx.lineTo(gx0 - 14, y); ctx.lineTo(gx0 - 20, y + 5); ctx.fill();
     if (i < fl.length) {
-      dimV(gx1 + 34, levels[i + 1], y, `${fmt(fl[i])} ${S('m')}`, gx1 + 4);
+      dimV(right + 34, levels[i + 1], y, `${fmt(fl[i])} ${S('m')}`, right + 4);
       acc += fl[i];
     }
   });
@@ -556,6 +591,7 @@ function buildGrid() {
   document.getElementById('gridFields').replaceChildren(
     num(t('grid'), 'grid', 1, 10, 0.5),
     num(t('bays'), 'bays', 1, 16, 1, true),
+    num(t('depthBays'), 'depthBays', 0, 8, 1, true),
     num(t('groundH'), 'groundH', 2, 8, 0.5),
     num(t('upperH'), 'upperH', 2, 8, 0.5),
     num(t('upperFloors'), 'upperFloors', 0, 6, 1, true),
@@ -619,7 +655,9 @@ function moduleCard(m, i) {
   };
   const remove = () => {
     state.modules.splice(i, 1);
-    for (const k of Object.keys(state.layout)) if (state.layout[k] === m.id) delete state.layout[k];
+    for (const lay of [state.layout, state.layoutSide]) {
+      for (const k of Object.keys(lay)) if (lay[k] === m.id) delete lay[k];
+    }
     if (state.filler === m.id) state.filler = '';
     if (brush === m.id) brush = '';
     buildModules(); buildLayout(); scheduleRender();
@@ -668,13 +706,22 @@ function buildLayout() {
   fillerSel.value = state.filler;
   fillerSel.addEventListener('change', () => { state.filler = fillerSel.value; buildLayout(); scheduleRender(); });
 
-  const fl = floors(), n = state.bays;
+  // front or side elevation; the switch shows only when the house has a side
+  if (!(state.depthBays > 0)) facade = 'front';
+  const lay = facade === 'side' ? state.layoutSide : state.layout;
+  const tabBtn = (id, label) => el('button', {
+    class: 'btn small' + (facade === id ? ' active' : ''),
+    onclick: () => { facade = id; buildLayout(); },
+  }, label);
+  const tabs = state.depthBays > 0 ? [el('div', { class: 'brushes' }, tabBtn('front', t('front')), tabBtn('side', t('side')))] : [];
+
+  const fl = floors(), n = facade === 'side' ? state.depthBays : state.bays;
   const grid = el('div', { class: 'facade' });
   grid.style.gridTemplateColumns = `repeat(${n}, 1fr)`;
   for (let f = fl.length - 1; f >= 0; f--) {
     for (let b = 0; b < n; b++) {
       const key = `${f}_${b}`;
-      const mod = byId(state.layout[key]);
+      const mod = byId(lay[key]);
       const shown = mod || byId(state.filler);
       const cell = el('div', { class: 'cell' + (mod ? '' : ' empty'), title: t('cellTitle', f + 1, b + 1) },
         el('span', {}, mod ? mod.code : shown ? '·' : ''));
@@ -682,20 +729,20 @@ function buildLayout() {
       if (shown) cell.style.backgroundImage = `url(${shown.src})`;
       if (!mod && shown) cell.style.opacity = '0.55';
       cell.addEventListener('click', () => {
-        if (brush) state.layout[key] = brush; else delete state.layout[key];
+        if (brush) lay[key] = brush; else delete lay[key];
         buildLayout(); scheduleRender();
       });
-      cell.addEventListener('contextmenu', e => { e.preventDefault(); delete state.layout[key]; buildLayout(); scheduleRender(); });
+      cell.addEventListener('contextmenu', e => { e.preventDefault(); delete lay[key]; buildLayout(); scheduleRender(); });
       grid.append(cell);
     }
   }
 
   box.replaceChildren(
-    brushes, grid,
+    ...tabs, brushes, grid,
     el('div', { class: 'fields', style: 'margin-top:10px' },
       el('label', { class: 'wide' }, t('filler'), fillerSel)),
     el('div', { class: 'tools', style: 'margin-top:8px;display:flex;gap:6px' },
-      el('button', { class: 'btn small', onclick: () => { state.layout = {}; buildLayout(); scheduleRender(); } }, t('clearLayout'))));
+      el('button', { class: 'btn small', onclick: () => { for (const k of Object.keys(lay)) delete lay[k]; buildLayout(); scheduleRender(); } }, t('clearLayout'))));
 }
 
 // Average colour of an image, so a texture material also has a HEX code.

@@ -13,7 +13,8 @@ A one-page tool that turns photos of a building and its facade modules into a cl
 4. **Modules**: drop module photos (windows, doors, balcony, wall). For each one set a code (`W-01`, `D-01`,
    `BR-01`), a name, a caption and a size: 3 × 3 m, 3 × 4 m or a custom size. Frame the photo:
    drag to move, mouse wheel to zoom, double-click to reset.
-5. **Facade layout**: pick a module and click the grid cells. Right-click clears a cell. Choose a filler module
+5. **Facade layout**: pick a module and click the grid cells. Right-click clears a cell. Switch between the
+   front and the side elevation (set the house depth in bays; 0 hides the side). Choose a filler module
    (usually the brick wall) for empty cells and for the gap under a module that is lower than its floor.
 6. **Materials**: up to 6 swatches. Press **Take colours from photos** to take colours from the module photos,
    or add a texture photo (brick, plaster, roof tiles): it is cut to a square that you can move and zoom.

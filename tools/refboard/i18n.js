@@ -34,6 +34,7 @@ const UI_TEXT = {
     loadError: 'Не удалось открыть проект: ',
     help: 'Помощь', close: 'Закрыть',
     swatchSize: 'Сторона квадрата на листе, px (0 или пусто — авто)', auto: 'авто',
+    depthBays: 'Пролётов по глубине (сбоку), 0 — без бокового', front: 'Главный фасад', side: 'Боковой фасад',
   },
   en: {
     brandSub: 'facade and modules → 1980×1020 sheet',
@@ -67,6 +68,7 @@ const UI_TEXT = {
     loadError: 'Could not open the project: ',
     help: 'Help', close: 'Close',
     swatchSize: 'Swatch side on the sheet, px (0 or empty = auto)', auto: 'auto',
+    depthBays: 'Bays in depth (side), 0 = no side', front: 'Front', side: 'Side',
   },
 };
 
@@ -79,6 +81,7 @@ const SHEET_TEXT = {
     gridValue: g => `${g} m module`,
     floorsValue: (ground, upper, count) => count === 0 ? `GF ${ground} m`
       : count === 1 ? `GF ${ground} m · 1F ${upper} m` : `GF ${ground} m · 1–${count}F ${upper} m`,
+    front: 'FRONT ELEVATION', side: 'SIDE ELEVATION',
     m: 'm', roof: 'ROOF', texture: 'TEXTURE', materialN: n => `Material ${n}`,
     modulesCount: (n, sizes) => `${n} modules · ${sizes}`,
     noOverview: 'upload a facade photo', noModules: 'add module photos', noPhoto: 'no photo',
@@ -90,6 +93,7 @@ const SHEET_TEXT = {
     gridValue: g => `модуль ${g} м`,
     floorsValue: (ground, upper, count) => count === 0 ? `1 эт. ${ground} м`
       : count === 1 ? `1 эт. ${ground} м · 2 эт. ${upper} м` : `1 эт. ${ground} м · 2–${count + 1} эт. ${upper} м`,
+    front: 'ГЛАВНЫЙ ФАСАД', side: 'БОКОВОЙ ФАСАД',
     m: 'м', roof: 'КРОВЛЯ', texture: 'ТЕКСТУРА', materialN: n => `Материал ${n}`,
     modulesCount: (n, sizes) => `модулей: ${n} · ${sizes}`,
     noOverview: 'загрузите фото фасада', noModules: 'добавьте фото модулей', noPhoto: 'нет фото',
@@ -108,7 +112,9 @@ const HELP_HTML = {
       <li><b>Модули.</b> Перетащите фото окон, дверей, балкона, стены. Каждому задайте код (<code>W-01</code>,
         <code>D-01</code>, <code>BR-01</code>), название, подпись и размер: 3 × 3 м, 3 × 4 м или свой.</li>
       <li><b>Схема фасада.</b> Выберите модуль кнопкой и кликайте по клеткам. Правый клик очищает клетку.
-        Заполнитель (обычно кирпичная стена) закрывает пустые клетки и место под низким модулем.</li>
+        Заполнитель (обычно кирпичная стена) закрывает пустые клетки и место под низким модулем.
+        Кнопки «Главный / Боковой» переключают фасад; глубина дома задаётся в «Сетке». Глухая боковая
+        стена получается сама — просто оставьте клетки пустыми.</li>
       <li><b>Материалы.</b> До 6 образцов: «Взять цвета с фото» или фото текстуры (кирпич, штукатурка,
         черепица) — оно обрежется квадратом. Размер квадратов подбирается сам или задаётся вручную.</li>
       <li><b>Скачать PNG</b> — готовый лист 1980×1020. <b>Сохранить проект</b> — файл <code>.json</code>
@@ -133,7 +139,9 @@ const HELP_HTML = {
       <li><b>Modules.</b> Drop photos of windows, doors, a balcony, a wall. Give each one a code (<code>W-01</code>,
         <code>D-01</code>, <code>BR-01</code>), a name, a caption and a size: 3 × 3 m, 3 × 4 m or custom.</li>
       <li><b>Facade layout.</b> Pick a module with its button and click the cells. Right-click clears a cell.
-        The filler (usually the brick wall) covers empty cells and the gap under a low module.</li>
+        The filler (usually the brick wall) covers empty cells and the gap under a low module.
+        The Front / Side buttons switch the elevation; the house depth is set in "Grid". A blank side wall
+        needs nothing: leave its cells empty.</li>
       <li><b>Materials.</b> Up to 6 swatches: "Take colours from photos" or a texture photo (brick, plaster,
         roof tiles), cut to a square. The swatch size is automatic or set by hand.</li>
       <li><b>Download PNG</b> gives the 1980×1020 sheet. <b>Save project</b> gives a <code>.json</code> file
