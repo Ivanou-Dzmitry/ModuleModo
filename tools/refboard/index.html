@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Refboard Builder</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=0.0.4">
 </head>
 <body>
   <header class="topbar">
@@ -66,11 +66,27 @@
     </aside>
 
     <main class="preview">
-      <canvas id="sheet" width="1980" height="1020"></canvas>
+      <div class="stage">
+        <div class="viewbar">
+          <div class="seg">
+            <button class="btn small active" id="tabSheet" data-i18n="viewSheet">Лист</button>
+            <button class="btn small" id="tab3d" data-i18n="view3d">3D-вид</button>
+          </div>
+          <div class="bar3d" id="bar3d" hidden>
+            <label class="inline"><span data-i18n="roofColour">Цвет крыши</span><input type="color" id="roofColour"></label>
+            <button class="btn small" id="resetView" data-i18n="resetView">Сбросить вид</button>
+            <button class="btn small primary" id="snapshot3d" data-i18n="snapshot">Снимок в «Общий вид»</button>
+          </div>
+        </div>
+        <canvas id="sheet" width="1980" height="1020"></canvas>
+        <canvas id="view3d" hidden></canvas>
+        <p class="hint" id="hint3d" data-i18n="hint3d" hidden></p>
+      </div>
     </main>
   </div>
 
-  <script src="i18n.js"></script>
-  <script src="app.js"></script>
+  <script src="i18n.js?v=0.0.4"></script>
+  <script src="app.js?v=0.0.4"></script>
+  <script src="view3d.js?v=0.0.4"></script>
 </body>
 </html>

@@ -19,7 +19,9 @@ A one-page tool that turns photos of a building and its facade modules into a cl
 6. **Materials**: up to 6 swatches. Press **Take colours from photos** to take colours from the module photos,
    or add a texture photo (brick, plaster, roof tiles): it is cut to a square that you can move and zoom.
    Swatches fill the column on their own (1–3 in a column, 4 as 2 × 2, 5–6 as 3 × 2), or set the side in px.
-7. **Download PNG** saves the board. **Save project** saves a `.json` file with the photos inside, so
+7. **3D view** (button above the sheet): the house as a textured box with a gable roof. Drag to orbit, wheel to zoom.
+   **Snapshot to "General view"** puts the current angle into section 01.
+8. **Download PNG** saves the board. **Save project** saves a `.json` file with the photos inside, so
    you can open it later with **Open project**.
 
 The interface speaks Russian and English: switch with **RU / EN** in the top bar. The sheet language is a separate
@@ -29,7 +31,7 @@ Tip: straighten the perspective of your photos first (Photoshop: Perspective Cro
 
 ## Publish on GitHub Pages
 
-1. Put `index.html`, `i18n.js`, `app.js` and `style.css` in the root of a repository (or in a `docs/` folder).
+1. Put `index.html`, `i18n.js`, `app.js`, `view3d.js` and `style.css` in the root of a repository (or in a `docs/` folder).
 2. Repository **Settings → Pages → Build and deployment → Deploy from a branch**, branch `main`,
    folder `/ (root)` or `/docs`.
 3. After a minute the tool is live at `https://<user>.github.io/<repo>/`.

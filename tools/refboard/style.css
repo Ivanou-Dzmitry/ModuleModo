@@ -103,8 +103,18 @@ canvas.crop:active { cursor: grabbing; }
 canvas.crop.mini { width: 44px; height: 44px; }
 .drop.small { padding: 10px; font-size: 12px; margin: 6px 0; }
 
+[hidden] { display: none !important; }
+
 .preview { padding: 20px; display: flex; align-items: flex-start; justify-content: center; }
-#sheet { width: 100%; max-width: 1980px; height: auto; box-shadow: 0 2px 16px rgba(0,0,0,.18); background: #f1efea; }
+.stage { width: 100%; max-width: 1980px; }
+.viewbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.seg, .bar3d { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+label.inline { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--grey); }
+label.inline input[type=color] { width: 44px; height: 26px; }
+#sheet { width: 100%; height: auto; box-shadow: 0 2px 16px rgba(0,0,0,.18); background: #f1efea; display: block; }
+#view3d { width: 100%; aspect-ratio: 1980 / 1020; display: block; cursor: grab; touch-action: none;
+  box-shadow: 0 2px 16px rgba(0,0,0,.18); background: #f1efea; }
+#view3d:active { cursor: grabbing; }
 
 @media (max-width: 1000px) {
   .layout { grid-template-columns: 1fr; }

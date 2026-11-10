@@ -35,6 +35,10 @@ const UI_TEXT = {
     help: 'Помощь', close: 'Закрыть',
     swatchSize: 'Сторона квадрата на листе, px (0 или пусто — авто)', auto: 'авто',
     depthBays: 'Пролётов по глубине (сбоку), 0 — без бокового', front: 'Главный фасад', side: 'Боковой фасад',
+    viewSheet: 'Лист', view3d: '3D-вид', roofColour: 'Цвет крыши', resetView: 'Сбросить вид',
+    snapshot: 'Снимок в «Общий вид»',
+    hint3d: 'Тяните мышью — вращение, колесо — приближение. Спереди главный фасад, по бокам боковой, сзади стена-заполнитель.',
+    noWebgl: 'Браузер не поддерживает WebGL2, 3D-вид недоступен.',
   },
   en: {
     brandSub: 'facade and modules → 1980×1020 sheet',
@@ -69,6 +73,10 @@ const UI_TEXT = {
     help: 'Help', close: 'Close',
     swatchSize: 'Swatch side on the sheet, px (0 or empty = auto)', auto: 'auto',
     depthBays: 'Bays in depth (side), 0 = no side', front: 'Front', side: 'Side',
+    viewSheet: 'Sheet', view3d: '3D view', roofColour: 'Roof colour', resetView: 'Reset view',
+    snapshot: 'Snapshot to "General view"',
+    hint3d: 'Drag to orbit, wheel to zoom. Front elevation at the front, side elevation on both sides, filler wall at the back.',
+    noWebgl: 'This browser has no WebGL2, so the 3D view is not available.',
   },
 };
 
@@ -120,6 +128,10 @@ const HELP_HTML = {
       <li><b>Скачать PNG</b> — готовый лист 1980×1020. <b>Сохранить проект</b> — файл <code>.json</code>
         с фото внутри, его можно открыть позже.</li>
     </ol>
+    <h3>3D-вид</h3>
+    <p>Кнопка «3D-вид» над листом показывает дом коробкой из ваших модулей: спереди главный фасад, по бокам
+      боковой, сзади стена-заполнитель. Тяните мышью — вращение, колесо — приближение. «Снимок в „Общий вид“»
+      кладёт текущий ракурс в раздел 01 листа.</p>
     <h3>Кадрирование в рамке</h3>
     <p>Тяните мышью — сдвиг, колесо — масштаб, двойной клик — сброс.</p>
     <h3>Советы</h3>
@@ -147,6 +159,10 @@ const HELP_HTML = {
       <li><b>Download PNG</b> gives the 1980×1020 sheet. <b>Save project</b> gives a <code>.json</code> file
         with the photos inside, to open later.</li>
     </ol>
+    <h3>3D view</h3>
+    <p>The "3D view" button above the sheet shows the house as a box made of your modules: the front elevation
+      at the front, the side elevation on both sides, the filler wall at the back. Drag to orbit, wheel to zoom.
+      "Snapshot to General view" puts the current angle into section 01 of the sheet.</p>
     <h3>Framing a photo</h3>
     <p>Drag to move, mouse wheel to zoom, double-click to reset.</p>
     <h3>Tips</h3>

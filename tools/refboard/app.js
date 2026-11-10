@@ -1,7 +1,7 @@
 'use strict';
 
 // ---------- constants ----------
-const VERSION = '0.0.3';
+const VERSION = '0.0.4';
 const W = 1980, H = 1020, M = 60;
 // Sheet colours: bg and ink come from the project, the rest are mixed from them in updateTheme().
 const COL = { bg: '#f1efea', ink: '#1e1e1e', grey: '#8a8780', light: '#cdc9c1', paper: '#e4e1da', veil: 'rgba(241,239,234,0.18)' };
@@ -39,6 +39,7 @@ function defaultState() {
     upperFloors: 1,
     bays: 7,
     roof: true,
+    roofColor: '#8a4b3b',  // 3D view roof
     overview: null,        // { src, crop }
     modules: [],           // { id, code, name, sub, w, h, src, crop }
     depthBays: 2,          // bays of the side elevation, 0 = no side elevation
@@ -427,6 +428,7 @@ function render() {
   if (hasPalette) drawPalette(px0, TOP);
   drawLayout(M + photoW + 90, hasPalette ? px0 - 70 : W - M, TOP);
   drawModules();
+  if (typeof View3D !== 'undefined') View3D.invalidate();
 }
 
 let pending = false;
@@ -847,6 +849,7 @@ function applyAccent() { document.documentElement.style.setProperty('--accent', 
 
 function buildAll() {
   applyStaticText();
+  document.getElementById('roofColour').value = state.roofColor;
   applyAccent();
   buildProject(); buildGrid(); buildOverview(); buildModules(); buildLayout(); buildPalette();
   scheduleRender();
@@ -872,6 +875,27 @@ function download(blob, name) {
 const fileBase = () => (state.title || 'refboard').replace(/[^\w.-]+/g, '_');
 
 document.getElementById('version').textContent = `v${VERSION}`;
+
+// ---------- sheet / 3D view switch ----------
+function showView(is3d) {
+  if (is3d && !View3D.available()) { alert(t('noWebgl')); return; }
+  document.getElementById('sheet').hidden = is3d;
+  document.getElementById('view3d').hidden = !is3d;
+  document.getElementById('bar3d').hidden = !is3d;
+  document.getElementById('hint3d').hidden = !is3d;
+  document.getElementById('tabSheet').classList.toggle('active', !is3d);
+  document.getElementById('tab3d').classList.toggle('active', is3d);
+  View3D.show(is3d);
+}
+document.getElementById('tabSheet').addEventListener('click', () => showView(false));
+document.getElementById('tab3d').addEventListener('click', () => showView(true));
+document.getElementById('resetView').addEventListener('click', () => View3D.resetView());
+document.getElementById('roofColour').addEventListener('input', e => { state.roofColor = e.target.value; View3D.invalidate(); });
+document.getElementById('snapshot3d').addEventListener('click', () => {
+  state.overview = { src: View3D.snapshot(), crop: newCrop() };
+  buildOverview(); scheduleRender();
+  showView(false);
+});
 document.getElementById('helpOpen').addEventListener('click', () => document.getElementById('help').showModal());
 
 document.querySelectorAll('[data-lang]').forEach(b => b.addEventListener('click', () => {
