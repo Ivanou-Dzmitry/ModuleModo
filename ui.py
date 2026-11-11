@@ -90,10 +90,17 @@ PRESETS = (
     ("Balcony: Door + Window", _BALCONY),
     ("Door + Window (No Slab)", {**_BALCONY, "slab": False}),
     ("Loggia", {**_BALCONY, "opening": 'LOGGIA', "door_step": 0.1, "loggia_width": 2.6, "loggia_height": 1.2,
-                "loggia_depth": 1.2, "loggia_floor": 0.3, "parapet_height": 1.1, "parapet_thickness": 0.15}),
+                "loggia_depth": 1.2, "loggia_floor": 0.3, "parapet_height": 1.1, "parapet_thickness": 0.15,
+                "niche": False}),
     ("Loggia (Door Only)", {**_BALCONY, "opening": 'LOGGIA', "loggia_content": 'DOOR', "door_step": 0.1, "loggia_width": 2.0,
                             "loggia_height": 1.2, "loggia_depth": 1.2, "loggia_floor": 0.3, "parapet_height": 1.1,
-                            "parapet_thickness": 0.15}),
+                            "parapet_thickness": 0.15, "niche": False}),
+    # The module under a loggia on the ground floors: 4 m high like the loggia modules above, with a 1 m deep
+    # niche under the loggia floor (1.3 m up).
+    ("Loggia: Niche below", {**_BALCONY, "opening": 'LOGGIA', "height": 4.0, "door_step": 0.1, "loggia_width": 2.6,
+                             "loggia_height": 1.2, "loggia_depth": 1.2, "loggia_floor": 1.3, "parapet_height": 1.1,
+                             "parapet_thickness": 0.15, "niche": True, "niche_height": 1.0, "niche_depth": 1.0,
+                             "niche_margin": 0.1}),
     ("Solid Wall", {**_WINDOW, "opening": 'NONE'}),
     # The underground band: a plain wall below level 0, its top edge at Z=0.
     ("Underground", {**_WINDOW, "opening": 'NONE', "height": 0.5, "below_ground": True}),
@@ -145,6 +152,7 @@ SECTIONS = (
     ("balcony", "Balcony and Loggia", 'MOD_BUILD', (
         ("Balcony", (("With Slab", "Balcony: Door + Window"), ("No Slab", "Door + Window (No Slab)"))),
         ("Loggia", (("Door + Window", "Loggia"), ("Door Only", "Loggia (Door Only)"))),
+        (None, (("Loggia + Niche below", "Loggia: Niche below"),)),
     )),
     ("levels", "Underground and Attic", 'TRIA_DOWN', (
         (None, (("Underground (below Z=0)", "Underground"),)),

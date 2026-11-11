@@ -6,6 +6,7 @@ from mathutils import Matrix, Vector
 MIN_MARGIN = 0.05
 MIN_STRAIGHT = 0.05
 MIN_GAP = 0.15
+MIN_NICHE = 0.3       # the lowest niche under a loggia
 EPS = 1e-6
 
 
@@ -433,9 +434,17 @@ def _resolve_loggia(p, out):
     the slab) or a single door, standing on the loggia floor; the parapet hides its lower part.
     """
     width, height = out["width"], out["height"]
-    lw = _clamp(p["loggia_width"], 0.8, width - 0.2)
-    lx0 = _clamp(width / 2 + p["offset_x"] - lw / 2, 0.1, width - 0.1 - lw)
     floor = _clamp(p["loggia_floor"], 0.0, height / 3)
+    # The niche under the loggia: a recess in the lower wall that leaves a pier on both sides, so the edges
+    # of the module keep only their corners. It has to fit below the loggia floor.
+    niche = None
+    margin = 0.1
+    if p.get("niche") and floor >= MIN_NICHE + 0.05:
+        margin = max(margin, _clamp(p["niche_margin"], 0.03, width / 4))
+        niche = {"margin": margin, "height": min(max(p["niche_height"], MIN_NICHE), floor - 0.05),
+                 "depth": max(p["niche_depth"], 0.2)}
+    lw = _clamp(p["loggia_width"], 0.8, width - 2 * margin)
+    lx0 = _clamp(width / 2 + p["offset_x"] - lw / 2, margin, width - margin - lw)
     z_open = floor + _clamp(p["parapet_height"], 0.3, height / 2)
     z_top = _clamp(z_open + p["loggia_height"], z_open + 0.3, height - 0.1)
     depth = max(p["loggia_depth"], 0.4)
@@ -463,6 +472,7 @@ def _resolve_loggia(p, out):
         "z_top": z_top,
         "depth": depth,
         "parapet": thick,
+        "niche": niche,
     }
     out["back"] = back
     return out
@@ -1122,6 +1132,33 @@ def _directed_face(bm, verts, direction):
     return bm.faces.new(verts)
 
 
+def _build_niche(bm, vert, niche, width, corners, opening):
+    """The lower wall of a loggia module with a niche: a П-shaped recess, open at the bottom.
+
+    The niche is `margin` narrower than the module on both sides, so the side edges of the module are
+    single edges. On each side the wall beside the opening is a quad that reaches down to the top corner of the
+    niche, and two triangles that fan out from the module corner and close the pier. The wall between the opening
+    and the niche is one quad. The niche itself has a ceiling, a back wall and two sides, and no floor.
+    """
+    c_bl, c_br, c_tr, c_tl = corners
+    o_bl, o_br, o_tr, o_tl = opening
+    m, h, d = niche["margin"], niche["height"], niche["depth"]
+    n_bl, n_br, n_tr, n_tl = vert(m, 0), vert(width - m, 0), vert(width - m, h), vert(m, h)
+    _plane_face(bm, [c_tr, o_tr, o_br, n_tr])
+    _plane_face(bm, [c_tr, n_tr, c_br])
+    _plane_face(bm, [n_tr, n_br, c_br])
+    _plane_face(bm, [c_tl, o_tl, o_bl, n_tl])
+    _plane_face(bm, [c_tl, n_tl, c_bl])
+    _plane_face(bm, [n_tl, n_bl, c_bl])
+    _plane_face(bm, [n_tl, n_tr, o_br, o_bl])
+
+    b_bl, b_br, b_tr, b_tl = vert(m, 0, d), vert(width - m, 0, d), vert(width - m, h, d), vert(m, h, d)
+    _directed_face(bm, [n_tl, n_tr, b_tr, b_tl], (0, 0, -1))
+    _directed_face(bm, [b_bl, b_br, b_tr, b_tl], (0, -1, 0))
+    _directed_face(bm, [n_bl, n_tl, b_tl, b_bl], (1, 0, 0))
+    _directed_face(bm, [n_br, n_tr, b_tr, b_br], (-1, 0, 0))
+
+
 def _build_loggia(bm, r):
     """Facade with a big opening, a loggia behind it and a parapet under the opening.
 
@@ -1137,10 +1174,13 @@ def _build_loggia(bm, r):
     # Facade: the wall plane with the opening above the parapet.
     c_bl, c_br, c_tr, c_tl = vert(0, 0), vert(width, 0), vert(width, height), vert(0, height)
     o_bl, o_br, o_tr, o_tl = vert(lx0, zo), vert(lx1, zo), vert(lx1, zt), vert(lx0, zt)
-    _plane_face(bm, [c_bl, o_bl, o_tl, c_tl])
-    _plane_face(bm, [o_br, c_br, c_tr, o_tr])
-    _plane_face(bm, [c_bl, c_br, o_br, o_bl])
     _plane_face(bm, [o_tl, o_tr, c_tr, c_tl])
+    if L["niche"]:
+        _build_niche(bm, vert, L["niche"], width, (c_bl, c_br, c_tr, c_tl), (o_bl, o_br, o_tr, o_tl))
+    else:
+        _plane_face(bm, [c_bl, o_bl, o_tl, c_tl])
+        _plane_face(bm, [o_br, c_br, c_tr, o_tr])
+        _plane_face(bm, [c_bl, c_br, o_br, o_bl])
 
     # Back wall: the door and window module, moved to the back of the loggia.
     before = set(bm.verts)

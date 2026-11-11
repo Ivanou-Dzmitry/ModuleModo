@@ -98,6 +98,10 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
     loggia_floor: FloatProperty(name="Floor Height", description="Height of the loggia floor above the bottom of the module", default=0.3, min=0.0, soft_max=2.0, unit='LENGTH')
     parapet_height: FloatProperty(name="Parapet Height", description="Height of the parapet above the loggia floor", default=1.1, min=0.3, soft_max=2.0, unit='LENGTH')
     parapet_thickness: FloatProperty(name="Parapet Thickness", default=0.15, min=0.03, soft_max=0.6, unit='LENGTH')
+    niche: BoolProperty(name="Niche under Loggia", description="A recess in the wall below the loggia floor, open at the bottom", default=False)
+    niche_height: FloatProperty(name="Niche Height", description="Height of the niche; it has to stay below the loggia floor", default=1.0, min=0.3, soft_max=3.0, unit='LENGTH')
+    niche_depth: FloatProperty(name="Niche Depth", description="How deep the niche is cut into the wall", default=1.0, min=0.2, soft_max=4.0, unit='LENGTH')
+    niche_margin: FloatProperty(name="Pier Width", description="Wall left on both sides of the niche", default=0.1, min=0.03, soft_max=0.6, unit='LENGTH')
     depth: FloatProperty(name="Depth", description="How deep the opening is pushed into the wall (towards -Y)", default=0.2, min=0.0, soft_max=1.0, unit='LENGTH')
     offset_x: FloatProperty(name="Offset X", description="Shift from the module center", default=0.0, soft_min=-5.0, soft_max=5.0, unit='LENGTH')
     sill_height: FloatProperty(name="Height from Floor", default=0.9, min=0.0, soft_max=5.0, unit='LENGTH')
@@ -219,6 +223,11 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
                 col.prop(self, "loggia_floor", slider=True)
                 col.prop(self, "parapet_height", slider=True)
                 col.prop(self, "parapet_thickness", slider=True)
+                col.prop(self, "niche")
+                if self.niche:
+                    col.prop(self, "niche_height", slider=True)
+                    col.prop(self, "niche_depth", slider=True)
+                    col.prop(self, "niche_margin", slider=True)
                 col = layout.column(align=True)
             if balcony:
                 col.prop(self, "door_width", slider=True)
@@ -405,6 +414,10 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
             "loggia_floor": self.loggia_floor,
             "parapet_height": self.parapet_height,
             "parapet_thickness": self.parapet_thickness,
+            "niche": self.niche,
+            "niche_height": self.niche_height,
+            "niche_depth": self.niche_depth,
+            "niche_margin": self.niche_margin,
             "door_step": self.door_step,
             "shutters": self.shutters,
             "shutter_depth": self.shutter_depth,
