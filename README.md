@@ -4,7 +4,7 @@ Procedural low-poly wall modules for Blender 5.2+.
 
 ![preview](preview.png)
 
-**Add > Mesh > Wall Module**, or the **ModuleModo** tab in the 3D viewport sidebar, where the 47 buttons are grouped into collapsible sections (Windows, Doors and Entrance, Corners, Bay Windows, Balcony and Loggia, Other) and related variants share a row. All parameters live in the redo panel, so they can be tweaked right after creation.
+**Add > Mesh > Wall Module**, or the **ModuleModo** tab in the 3D viewport sidebar, where the 49 buttons are grouped into collapsible sections (Windows, Doors and Entrance, Corners, Bay Windows, Balcony and Loggia, Other) and related variants share a row. All parameters live in the redo panel, so they can be tweaked right after creation.
 
 The module is built the way you would model it by hand: **plane, inset, extrude**.
 
@@ -25,7 +25,7 @@ The module is built the way you would model it by hand: **plane, inset, extrude*
 - Underground module (3 x 0.5 m, built below level 0, pivot at Z=0), the same band above the ground (Ground Band) and an attic / technical floor (3 x 1 m, with an optional small square window and cornice) for stacking whole buildings
 - Shutters as separate objects (children of the module, origin on the hinge axis) for straight, round and pointed windows
 - Pediment (a gable over a straight top), keystone at the top of an arch band, a panel under or above the window, a belt course with a plain strip above it, and pilasters at the ends of the module
-- Window frame: two posts and a head round the window (an arch band over an arch), extruded out of the wall; without a sill it is a closed ring (a П for a door), with a sill the frame stands on it as a separate body
+- Window frame: two posts and a head round the window (an arch band over an arch), extruded out of the wall; without a sill it is a closed ring (a П for a door), with a sill the frame stands on it as a separate body; the frame can also be recessed: pushed into the wall, with the window stepping in once more behind it (seen from above: wall, frame face, window)
 - Window trim: a trapezoid lintel over a straight top and an arch band round round or pointed arches, extruded out of the wall
 - Window sill (optional, or use the "Window Wall (No Sill)" button): the plane rectangle under the window extruded out towards +Y (thickness, depth)
 - Pivot at the bottom center or the bottom-left corner

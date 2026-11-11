@@ -135,7 +135,7 @@ def _frame_spec(o, p):
     if width < 0.03:
         return None
     return {"width": width, "depth": max(p.get("frame_depth", 0.04), 0.02), "bottom": bottom,
-            "key": _keystone(o, p)}
+            "recess": bool(p.get("frame_recess")), "key": _keystone(o, p)}
 
 
 def _trim_spec(o, p):
@@ -779,7 +779,7 @@ def _build_bay(bm, p):
     if not full:
         if p.get("sill"):
             reach = max(reach, p["sill_depth"])
-        if p.get("frame"):
+        if p.get("frame") and not p.get("frame_recess"):
             reach = max(reach, p.get("frame_depth", 0.04))
         if p.get("trim"):
             reach = max(reach, p.get("trim_depth", 0.06))
@@ -1064,9 +1064,10 @@ def _vertex_cache(bm):
 
     def vert(x, z, y=0.0):
         key = (round(x, 5), round(y, 5), round(z, 5))
-        if key not in cache:
-            cache[key] = bm.verts.new((x, y, z))
-        return cache[key]
+        v = cache.get(key)
+        if v is None or not v.is_valid:    # a vertex that was removed as unused is made again on demand
+            v = cache[key] = bm.verts.new((x, y, z))
+        return v
 
     return vert
 
@@ -1357,6 +1358,66 @@ def _extrude_frame(bm, vert, depth, window, foot, head, wall=None, feet=False, b
     _directed_face(bm, [spring_r, open_br, F(open_br), F(spring_r)], (-1, 0, 0))
 
 
+def _recess_frame(bm, vert, depth, window, lb, rb, head, bottom, sill, open_floor):
+    """A frame pushed `depth` into the wall: the hole in the wall follows the outer outline of the frame.
+
+    Seen from above the wall steps in to the face of the frame, and the window steps in once more.
+    `lb`, `rb` and `head` are the vertices of the outer outline on the wall plane (see `_extrude_frame`);
+    `bottom` closes the frame to a ring. `sill` is (left, right, depth) of a sill that still sticks out of the
+    wall under the frame; the frame then stands on its top. The window itself is built by the caller.
+    """
+    open_bl, open_br, spring_l, spring_r, arch_row = window
+    head_l, head_r, outer = head
+
+    def R(v):
+        return vert(v.co.x, v.co.z, depth)
+
+    # The face of the frame, at the bottom of the recess
+    if arch_row:
+        _plane_face(bm, [R(lb), R(open_bl), R(spring_l), R(outer[0])])
+        for k in range(len(arch_row) - 1):
+            _plane_face(bm, [R(arch_row[k]), R(arch_row[k + 1]), R(outer[k + 1]), R(outer[k])])
+        _plane_face(bm, [R(open_br), R(rb), R(outer[-1]), R(spring_r)])
+    else:
+        _plane_face(bm, [R(lb), R(open_bl), R(spring_l), R(head_l)])
+        _plane_face(bm, [R(spring_l), R(spring_r), R(head_r), R(head_l)])
+        _plane_face(bm, [R(open_br), R(rb), R(head_r), R(spring_r)])
+    if bottom:
+        _plane_face(bm, [R(lb), R(rb), R(open_br), R(open_bl)])
+
+    # The sides of the recess, facing into the hole
+    _directed_face(bm, [lb, head_l, R(head_l), R(lb)], (1, 0, 0))
+    _directed_face(bm, [head_r, rb, R(rb), R(head_r)], (-1, 0, 0))
+    if arch_row:
+        for k in range(len(outer) - 1):
+            e, f = outer[k].co, outer[k + 1].co
+            _directed_face(bm, [outer[k], outer[k + 1], R(outer[k + 1]), R(outer[k])], (f.z - e.z, 0, e.x - f.x))
+    else:
+        _directed_face(bm, [head_l, head_r, R(head_r), R(head_l)], (0, 0, -1))
+
+    # The bottom of the recess. Its back edge holds the two corners of the window, so the strip is a quad
+    # across the window and a triangle at each end: no vertex of the window lies on the edge of a face.
+    if open_floor:
+        return
+    if bottom:
+        _directed_face(bm, [lb, rb, R(rb), R(lb)], (0, 0, 1))
+        return
+    if sill:
+        sill_bl, sill_br, sill_depth = sill
+
+        def S(v):
+            return vert(v.co.x, v.co.z, -sill_depth)
+
+        _plane_face(bm, [S(sill_bl), S(sill_br), S(rb), S(lb)])
+        _directed_face(bm, [sill_bl, sill_br, S(sill_br), S(sill_bl)], (0, 0, -1))
+        _directed_face(bm, [sill_bl, lb, S(lb), S(sill_bl)], (-1, 0, 0))
+        _directed_face(bm, [sill_br, rb, S(rb), S(sill_br)], (1, 0, 0))
+        _directed_face(bm, [S(lb), S(rb), rb, lb], (0, 0, 1))
+    _directed_face(bm, [lb, rb, R(open_br), R(open_bl)], (0, 0, 1))
+    _directed_face(bm, [rb, R(rb), R(open_br)], (0, 0, 1))
+    _directed_face(bm, [lb, R(open_bl), R(lb)], (0, 0, 1))
+
+
 def _extrude_frame_sill(bm, vert, depth, sill_bl, sill_br, open_bl, open_br):
     """A sill as wide as the frame and as deep, with the posts of the frame standing on it.
 
@@ -1575,8 +1636,9 @@ def _build_opening(bm, vert, o, depth):
     sill = o["sill"]
 
     frame = o.get("frame")
+    recess = bool(frame and frame.get("recess"))     # the frame is pushed into the wall instead of sticking out
     deep_sill = False
-    if frame and sill:
+    if frame and sill and not recess:
         # the posts of the frame stand on the sill. A sill that sticks out further than the frame is
         # a body of its own; otherwise the two are one body and share the deeper of the two depths
         if sill["depth"] > frame["depth"] + 0.005:
@@ -1610,7 +1672,8 @@ def _build_opening(bm, vert, o, depth):
     if frame:
         w = frame["width"]
         zf = z0 - w if frame.get("bottom") else z0      # a bottom bar puts the feet of the posts below the window
-        lb, rb = (sill_bl, sill_br) if sill else (vert(x0 - w, zf), vert(x1 + w, zf))
+        # a recessed frame has no body in front of the wall, so its posts start at the opening even over a sill
+        lb, rb = (sill_bl, sill_br) if (sill and not recess) else (vert(x0 - w, zf), vert(x1 + w, zf))
         head_l, head_r = (outer[0], outer[-1]) if rise > 0 else (vert(x0 - w, z_top + w), vert(x1 + w, z_top + w))
 
     # Left and right faces
@@ -1635,8 +1698,11 @@ def _build_opening(bm, vert, o, depth):
         if not frame:
             _plane_face(bm, [c_bl, sill_bl, open_bl])
             _plane_face(bm, [c_br, open_br, sill_br])
+        elif recess:
+            _plane_face(bm, [c_bl, sill_bl, lb])
+            _plane_face(bm, [c_br, rb, sill_br])
     elif not flush:
-        if frame and frame.get("bottom"):
+        if frame and (frame.get("bottom") or recess):
             _wall_panel(bm, vert, [c_bl, c_br, rb, lb], panel)
         else:
             _wall_panel(bm, vert, [c_bl, c_br, open_br, open_bl], panel)
@@ -1679,7 +1745,12 @@ def _build_opening(bm, vert, o, depth):
         _wall_panel(bm, vert, [spring_l, spring_r, c_tr, c_tl], panel_top)
 
     outline = [open_bl, open_br, spring_r] + arch_mid[::-1] + [spring_l]
-    if depth <= EPS:
+    if recess:
+        # the window starts at the recessed frame and never lies in front of it
+        start = frame["depth"]
+        depth = max(depth, start)
+        outline = [vert(v.co.x, v.co.z, start) for v in outline]
+    if depth <= (frame["depth"] if recess else 0.0) + EPS:
         _fill_opening(bm, outline)
     else:
         inner = [vert(v.co.x, v.co.z, depth) for v in outline]
@@ -1694,7 +1765,10 @@ def _build_opening(bm, vert, o, depth):
         window = (open_bl, open_br, spring_l, spring_r, arch_row)
         head = (head_l, head_r, outer)
         fd = frame["depth"]
-        if deep_sill:
+        if recess:
+            _recess_frame(bm, vert, fd, window, lb, rb, head, frame.get("bottom"),
+                          (sill_bl, sill_br, sill["depth"]) if sill else None, open_floor)
+        elif deep_sill:
             foot = _extrude_frame_sill_deep(bm, vert, fd, sill["depth"], sill_bl, sill_br, open_bl, open_br, head_l, head_r)
             _extrude_frame(bm, vert, fd, window, foot, head)
         else:
@@ -1713,7 +1787,11 @@ def _build_opening(bm, vert, o, depth):
                             apex=apex if lintel["pediment"] else None)
     band = frame or trim
     if rise > 0 and band and band.get("key"):
-        _build_keystone(bm, o, band, outer, arch_row)
+        _build_keystone(bm, o, dict(band, depth=0.0) if recess else band, outer, arch_row)
+    if recess:
+        # the window starts at the frame, so its corners on the wall plane belong to no face
+        loose = [v for v in (open_bl, open_br, spring_l, spring_r, *arch_mid) if not v.link_faces]
+        bmesh.ops.delete(bm, geom=loose, context='VERTS')
 
 
 def _slab_cover(bm, back, f_first, f_last, inside):

@@ -153,7 +153,8 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
 
     frame: BoolProperty(name="Window Frame", description="Two posts and a head round the window, extruded out of the wall; over an arch the head is an arch band. Replaces the trim", default=False)
     frame_width: FloatProperty(name="Frame Width", default=0.12, min=0.03, soft_max=0.5, unit='LENGTH')
-    frame_depth: FloatProperty(name="Frame Depth", description="How far the frame sticks out of the wall", default=0.04, min=0.02, soft_max=0.3, unit='LENGTH')
+    frame_depth: FloatProperty(name="Frame Depth", description="How far the frame sticks out of the wall, or how deep it is pushed into it when the frame is recessed", default=0.04, min=0.02, soft_max=0.3, unit='LENGTH')
+    frame_recess: BoolProperty(name="Recessed Frame", description="Push the frame into the wall: the hole follows the outer edge of the frame, and the window steps in once more behind it. A sill still sticks out under the frame", default=False)
     trim: BoolProperty(name="Window Trim", description="A trapezoid lintel over a straight top, an arch band round an arch, extruded out of the wall", default=False)
     trim_height: FloatProperty(name="Lintel Height", default=0.35, min=0.05, soft_max=1.0, unit='LENGTH')
     trim_flare: FloatProperty(name="Lintel Flare", description="How much wider the lintel is than the window on each side, at its top", default=0.15, min=0.0, soft_max=0.6, unit='LENGTH')
@@ -293,6 +294,7 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
                     col = layout.column(align=True)
                     col.prop(self, "frame_width", slider=True)
                     col.prop(self, "frame_depth", slider=True)
+                    col.prop(self, "frame_recess")
                 layout.prop(self, "trim")
                 if self.trim and not self.frame:
                     col = layout.column(align=True)
@@ -444,6 +446,7 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
             "frame": self.frame,
             "frame_width": self.frame_width,
             "frame_depth": self.frame_depth,
+            "frame_recess": self.frame_recess,
             "trim": self.trim,
             "trim_height": self.trim_height,
             "trim_flare": self.trim_flare,
