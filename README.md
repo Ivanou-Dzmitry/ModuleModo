@@ -4,7 +4,15 @@ Procedural low-poly wall modules for Blender 5.2+.
 
 ![preview](docimg/preview.png)
 
+A building assembled from the modules, and a close-up of the facade. The topology is clean: quads and triangles only, no T-junctions, and only corner vertices on the module edges, so neighbouring modules weld.
+
+![a building made of modules](docimg/building.png)
+
 **Add > Mesh > Wall Module**, or the **ModuleModo** tab in the 3D viewport sidebar, where the 49 buttons are grouped into collapsible sections (Windows, Doors and Entrance, Corners, Bay Windows, Balcony and Loggia, Other) and related variants share a row. All parameters live in the redo panel, so they can be tweaked right after creation.
+
+![the ModuleModo panel and the redo panel](docimg/panel.png)
+
+*The screenshot is from version 0.20.0; the current panel has more buttons.*
 
 The module is built the way you would model it by hand: **plane, inset, extrude**.
 
