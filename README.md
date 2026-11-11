@@ -2,7 +2,7 @@
 
 Procedural low-poly wall modules for Blender 5.2+.
 
-![preview](preview.png)
+![preview](docimg/preview.png)
 
 **Add > Mesh > Wall Module**, or the **ModuleModo** tab in the 3D viewport sidebar, where the 49 buttons are grouped into collapsible sections (Windows, Doors and Entrance, Corners, Bay Windows, Balcony and Loggia, Other) and related variants share a row. All parameters live in the redo panel, so they can be tweaked right after creation.
 
@@ -32,7 +32,7 @@ The module is built the way you would model it by hand: **plane, inset, extrude*
 - Smooth by Angle (default 30 degrees): flat faces stay flat, steps along an arch get smooth shading, 90 degree corners stay hard; no modifier
 - Auto UV right after modeling: cube projection and Pack Islands without rotation, margin 0.01 (the same recipe as Auto UV in TechArt Tools)
 
-![topology](topology.png)
+![topology](docimg/topology.png)
 
 Build the installable zip with `build.ps1`.
 
