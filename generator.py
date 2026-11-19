@@ -105,7 +105,10 @@ def resolve_params(p):
         opening["panel"] = _panel_spec(opening, p)
         opening["panel_top"] = _panel_top_spec(opening, p)
         opening["shutters"] = _shutter_spec(opening, p)
-    _merge_cells(out)
+    if vertical:
+        _merge_stack(out)
+    else:
+        _merge_cells(out)
 
     out["depth"] = max(p["depth"], 0.0)
     return out
@@ -293,6 +296,17 @@ def _merge_cells(out):
     def flush(o):
         return o["z0"] - o["cell"][2] <= EPS
 
+    # Raised openings in a row (windows): the bottom edge gets no vertex between them either. Like at the top,
+    # the left half fans out to the bottom left corner and the others to the bottom right one.
+    raised = n > 1 and all(not flush(o) and not o.get("panel") and o["cell"][2] <= EPS for o in ops)
+    if raised:
+        for i, o in enumerate(ops):
+            side = 0.0 if i < (n + 1) // 2 else width
+            o["far_b"] = (side, side)
+
+    def anchor(o):     # the lowest point of the opening on its jamb: the bottom of the sill, or the opening itself
+        return o["sill"]["z_bottom"] if o["sill"] else o["z0"]
+
     for lo, ro in zip(ops, ops[1:]):
         fl, fr = flush(lo), flush(ro)
         x1, x0 = lo["x1"], ro["x0"]
@@ -311,17 +325,32 @@ def _merge_cells(out):
         ro["cell"] = (cx_r, c[1], c[2], c[3])
         lo["skip_r"] = ro["skip_l"] = True
 
-        # the pier: from the bottom of one jamb to the bottom of the next, up both jambs to the heads
-        chain = []
-        for pt in ((x1, lo["z0"]), (cx_l, b), (cx_r, b), (x0, ro["z0"])):
-            if not chain or chain[-1] != pt:
-                chain.append(pt)
         head_l, head_r = (x1, lo["z_top"]), (x0, ro["z_top"])
-        if len(chain) == 2:
-            out["plain"].append(chain + [head_r, head_l])
+        if raised:
+            # the wall under the pier is a face of its own that touches the bottom edge only at its corners
+            zl, zr = anchor(lo), anchor(ro)
+            bl, br = (0.0, 0.0), (width, 0.0)
+            lo_b, ro_b = lo["far_b"][0] == 0.0, ro["far_b"][0] == 0.0
+            if lo_b and ro_b:
+                out["plain"].append([bl, (x0, zr), (x1, zl)])
+            elif not lo_b and not ro_b:
+                out["plain"].append([br, (x0, zr), (x1, zl)])
+            else:
+                out["plain"].append([bl, br, (x0, zr), (x1, zl)])
+            if lo["sill"] or ro["sill"]:
+                out["plain"].append([(x1, zl), (x0, zr), (x0, ro["z0"]), (x1, lo["z0"])])
+            out["plain"].append([(x1, lo["z0"]), (x0, ro["z0"]), head_r, head_l])
         else:
-            out["plain"].append([chain[0], chain[1], head_l])
-            out["plain"].append([chain[1], chain[2], head_r, head_l])
+            # the pier: from the bottom of one jamb to the bottom of the next, up both jambs to the heads
+            chain = []
+            for pt in ((x1, lo["z0"]), (cx_l, b), (cx_r, b), (x0, ro["z0"])):
+                if not chain or chain[-1] != pt:
+                    chain.append(pt)
+            if len(chain) == 2:
+                out["plain"].append(chain + [head_r, head_l])
+            else:
+                out["plain"].append([chain[0], chain[1], head_l])
+                out["plain"].append([chain[1], chain[2], head_r, head_l])
         # the wall above the pier reaches out to the corners that the two heads fan to
         top_l, top_r = (0.0, height), (width, height)
         lo_left = lo["far"][1] == 0.0
@@ -332,6 +361,47 @@ def _merge_cells(out):
             out["plain"].append([top_r, head_l, head_r])
         else:
             out["plain"].append([top_l, head_l, head_r, top_r])
+    return True
+
+
+def _merge_stack(out):
+    """Windows one above the other share their wall, so the side edges of the module keep only their corners.
+
+    The lower half of the windows fans out to the two bottom corners and the others to the two top corners;
+    the wall between two windows is one face across, and a face on each side closes the gap to the corners.
+    Returns False, and changes nothing, when a window is not a plain rectangle or the gap is too thin.
+    """
+    ops = out["openings"]
+    width, height = out["width"], out["height"]
+    n = len(ops)
+    if n < 2:
+        return False
+    for o in ops:
+        if o["rise"] > 0 or any(o.get(k) for k in ("frame", "trim", "panel", "panel_top")):
+            return False
+        if o["cell"][0] > EPS or o["cell"][1] < width - EPS:
+            return False
+
+    def anchor(o):
+        return o["sill"]["z_bottom"] if o["sill"] else o["z0"]
+
+    if any(anchor(up) <= lo["z_top"] + EPS for lo, up in zip(ops, ops[1:])):
+        return False
+    bl, br, tl, tr = (0.0, 0.0), (width, 0.0), (0.0, height), (width, height)
+    low = [i < (n + 1) // 2 for i in range(n)]
+    for i, o in enumerate(ops):
+        left, right = (bl, br) if low[i] else (tl, tr)
+        o["corners"] = (left, right, right, left)
+        o["no_below"] = i > 0
+        o["no_above"] = i < n - 1
+    for i, (lo, up) in enumerate(zip(ops, ops[1:])):
+        zt, zb = lo["z_top"], anchor(up)
+        out["plain"].append([(lo["x0"], zt), (lo["x1"], zt), (up["x1"], zb), (up["x0"], zb)])
+        for x, bottom, top in ((lo["x0"], bl, tl), (lo["x1"], br, tr)):
+            if low[i] == low[i + 1]:
+                out["plain"].append([bottom if low[i] else top, (x, zt), (x, zb)])
+            else:
+                out["plain"].append([bottom, (x, zt), (x, zb), top])
     return True
 
 
@@ -1002,8 +1072,8 @@ def _build_pilasters(bm, inner, width, height, left, right, depth):
             _plane_face(bm, [vert(x_out, a, -depth), vert(x_in, a, -depth), vert(x_in, b, -depth), vert(x_out, b, -depth)])
             for x in (x_in, x_out):
                 _oriented_face(bm, [vert(x, a), vert(x, b), vert(x, b, -depth), vert(x, a, -depth)], inside)
-        for z in (zs[0], zs[-1]):
-            _oriented_face(bm, [vert(x_out, z), vert(x_in, z), vert(x_in, z, -depth), vert(x_out, z, -depth)], inside)
+        # no caps at the top and the bottom: the pilaster is open there, like the plinth and the cornice at the
+        # sides, so the pilasters of the modules above and below continue it
 
 
 def _build_bands(bm, inner, p, base_h, cornice_h, belt_h=0.0, strip_h=0.0):
@@ -1105,14 +1175,18 @@ def _build_stairs(bm, vert, st):
     zs = [rise - k * riser for k in range(steps)] + [0.0]   # zs[k]: top of tread k, zs[steps] is the ground
     ys = [-(landing + k * tread) for k in range(steps)]     # ys[k]: front of riser k
 
-    for a, b in zip(xs, xs[1:]):
-        _directed_face(bm, [vert(a, rise), vert(b, rise), vert(b, rise, ys[0]), vert(a, rise, ys[0])], (0, 0, 1))
-        for k in range(steps):
-            _directed_face(bm, [vert(a, zs[k], ys[k]), vert(b, zs[k], ys[k]),
-                                vert(b, zs[k + 1], ys[k]), vert(a, zs[k + 1], ys[k])], (0, -1, 0))
-            if k + 1 < steps:
-                _directed_face(bm, [vert(a, zs[k + 1], ys[k]), vert(b, zs[k + 1], ys[k]),
-                                    vert(b, zs[k + 1], ys[k + 1]), vert(a, zs[k + 1], ys[k + 1])], (0, 0, 1))
+    # Treads and risers run across the whole width in one piece; only the landing keeps the vertices of the
+    # wall behind it (the jambs of the doors), the way the top face of a slab does.
+    a, b = xs[0], xs[-1]
+    landing_top = [vert(x, rise) for x in xs]
+    inside = Vector(((a + b) / 2, ys[0] / 2, rise - 0.1))
+    _slab_cover(bm, landing_top, vert(a, rise, ys[0]), vert(b, rise, ys[0]), inside)
+    for k in range(steps):
+        _directed_face(bm, [vert(a, zs[k], ys[k]), vert(b, zs[k], ys[k]),
+                            vert(b, zs[k + 1], ys[k]), vert(a, zs[k + 1], ys[k])], (0, -1, 0))
+        if k + 1 < steps:
+            _directed_face(bm, [vert(a, zs[k + 1], ys[k]), vert(b, zs[k + 1], ys[k]),
+                                vert(b, zs[k + 1], ys[k + 1]), vert(a, zs[k + 1], ys[k + 1])], (0, 0, 1))
 
     for x, side in ((xs[0], -1), (xs[-1], 1)):
         out = (side, 0, 0)
@@ -1627,7 +1701,11 @@ def build_shutters(p):
 def _build_opening(bm, vert, o, depth):
     cx0, cx1, cz0, cz1 = o["cell"]
     far_l, far_r = o.get("far", (cx0, cx1))     # the top corners may lie further out than the cell
-    c_bl, c_br, c_tr, c_tl = vert(cx0, cz0), vert(cx1, cz0), vert(far_r, cz1), vert(far_l, cz1)
+    fb_l, fb_r = o.get("far_b", (cx0, cx1))     # so may the bottom ones
+    if o.get("corners"):     # the wall corners that the faces of this opening fan out to
+        c_bl, c_br, c_tr, c_tl = (vert(*pt) for pt in o["corners"])
+    else:
+        c_bl, c_br, c_tr, c_tl = vert(fb_l, cz0), vert(fb_r, cz0), vert(far_r, cz1), vert(far_l, cz1)
 
     x0, x1, z0, z_top, rise = o["x0"], o["x1"], o["z0"], o["z_top"], o["rise"]
     z_spring = z_top - rise
@@ -1694,13 +1772,18 @@ def _build_opening(bm, vert, o, depth):
     # Below the opening
     panel = o.get("panel")
     if sill:
-        _wall_panel(bm, vert, [c_bl, c_br, sill_br, sill_bl], panel)
+        if not o.get("no_below"):
+            _wall_panel(bm, vert, [c_bl, c_br, sill_br, sill_bl], panel)
         if not frame:
-            _plane_face(bm, [c_bl, sill_bl, open_bl])
-            _plane_face(bm, [c_br, open_br, sill_br])
+            if not (o.get("far_b") and o.get("skip_l")):
+                _plane_face(bm, [c_bl, sill_bl, open_bl])
+            if not (o.get("far_b") and o.get("skip_r")):
+                _plane_face(bm, [c_br, open_br, sill_br])
         elif recess:
             _plane_face(bm, [c_bl, sill_bl, lb])
             _plane_face(bm, [c_br, rb, sill_br])
+    elif o.get("no_below"):
+        pass
     elif not flush:
         if frame and (frame.get("bottom") or recess):
             _wall_panel(bm, vert, [c_bl, c_br, rb, lb], panel)
@@ -1741,7 +1824,7 @@ def _build_opening(bm, vert, o, depth):
         else:
             _wall_panel(bm, vert, [top_left, top_right, c_tr, c_tl], panel_top)
         _plane_face(bm, [spring_r, c_tr, top_right])
-    else:
+    elif not o.get("no_above"):
         _wall_panel(bm, vert, [spring_l, spring_r, c_tr, c_tl], panel_top)
 
     outline = [open_bl, open_br, spring_r] + arch_mid[::-1] + [spring_l]
