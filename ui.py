@@ -3,6 +3,7 @@ from pathlib import Path
 
 import bpy
 
+from . import exporter
 from .operators import HOUSE_OT_add_wall_module
 
 
@@ -209,6 +210,8 @@ class HOUSE_PT_modules(bpy.types.Panel):
     def draw(self, context):
         self.bl_label = "ModuleModo v%s" % ADDON_VERSION
         draw_sections(self.layout)
+        exporter.draw_export(self.layout, context)
+        exporter.draw_presets(self.layout, context)
 
 
 classes = (HOUSE_PT_modules,)

@@ -1,3 +1,4 @@
+import json
 import math
 
 import bpy
@@ -6,6 +7,119 @@ from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty
 from bpy_extras.object_utils import AddObjectHelper, object_data_add
 
 from . import generator
+
+STAMP = "moduleModo"       # custom property of a module: the settings it was made with, as JSON
+_NOT_SETTINGS = {"rna_type", "align", "location", "rotation"}
+
+
+def snapshot(props):
+    """The settings of the operator (or its last used properties) as a plain dict."""
+    if isinstance(props, bpy.types.Operator):
+        props = props.properties
+    settings = {}
+    for p in props.bl_rna.properties:
+        if p.identifier in _NOT_SETTINGS or p.identifier.startswith("bl_"):
+            continue
+        value = getattr(props, p.identifier)
+        if isinstance(value, (bool, int, float, str)):
+            settings[p.identifier] = value
+    return settings
+
+
+_KIND_NAMES = {'WINDOW': "win", 'DOOR': "door", 'BALCONY': "balc", 'LOGGIA': "logg", 'ENTRANCE': "ent",
+               'CORNER': "ocor", 'INNER_CORNER': "icor", 'BAY': "bay", 'NONE': "solid"}
+_WITH_WINDOW = {'WINDOW', 'DOOR', 'CORNER', 'INNER_CORNER', 'BAY'}
+
+
+def module_name(s):
+    """A short name that tells what the module is: its kind, the height and width of its opening in metres,
+    then the main features. A module that is not 3 m high or wide says so at the end.
+
+    win_1p4-1p2-corn is a window module, the window 1.4 m high and 1.2 m wide, with a cornice. It is also the
+    name of the FBX file.
+    """
+    opening = s.get("opening", 'WINDOW')
+    kind = _KIND_NAMES.get(opening, "wall")
+    count = s.get("count", 1)
+    if opening in {'WINDOW', 'ENTRANCE'} and count > 1:
+        kind += str(count) + ("v" if opening == 'WINDOW' and s.get("direction") == 'VERTICAL' else "")
+
+    # the features are named like the checkboxes of the panel, in their order
+    tags = []
+    if opening in _WITH_WINDOW:
+        if s.get("arch"):
+            tags.append("archtop")
+            if s.get("arch_type") == 'POINTED':
+                tags.append("pointed")
+        if s.get("frame"):
+            tags.append("winframe")
+            if s.get("frame_recess"):
+                tags.append("recessed")
+        elif s.get("trim"):
+            tags.append("wintrim")
+            if s.get("pediment") and not s.get("arch"):
+                tags.append("pediment")
+        if s.get("keystone") and s.get("arch") and (s.get("trim") or s.get("frame")):
+            tags.append("keystone")
+        if s.get("shutters") and opening != 'DOOR':
+            tags.append("shutters")
+        if s.get("panel"):
+            tags.append("panelunder")
+        if s.get("panel_top"):
+            tags.append("panelabove")
+        if opening != 'DOOR' and s.get("sill", True):
+            tags.append("winsill")
+    if opening in {'CORNER', 'INNER_CORNER'} and s.get("corner_walls") == 'ONE':
+        tags.append("one")
+    if opening == 'BAY':
+        if s.get("bay_full"):
+            tags.append("full")
+        if s.get("bay_splay", 0.5) <= 0.0:
+            tags.append("box")
+    if opening == 'BALCONY' and s.get("slab", True):
+        tags.append("slab")
+    if opening == 'ENTRANCE':
+        if s.get("stairs"):
+            tags.append("stairs")
+        if s.get("canopy"):
+            tags.append("canopy")
+    if opening == 'LOGGIA':
+        if s.get("loggia_content") == 'DOOR':
+            tags.append("door")
+        if s.get("niche"):
+            tags.append("niche")
+    if s.get("base"):
+        tags.append("plinth")
+    if s.get("cornice"):
+        tags.append("corn")
+    if s.get("belt"):
+        tags.append("belt")
+    if s.get("pilasters", 'NONE') != 'NONE':
+        tags.append("pilasters")
+    if s.get("below_ground") and opening not in {'CORNER', 'INNER_CORNER'}:
+        tags.append("ug")
+
+    height, width = s.get("height", 3.0), s.get("width", 3.0)
+    if opening in _WITH_WINDOW:
+        size = (s.get("open_height", 1.4), s.get("open_width", 1.2))
+    elif opening in {'BALCONY', 'ENTRANCE'}:
+        size = (s.get("door_height", 2.1), s.get("door_width", 0.9))
+    elif opening == 'LOGGIA':
+        size = (s.get("loggia_height", 1.2), s.get("loggia_width", 2.6))
+    else:
+        size = (height, width)       # a solid wall has no opening: the size of the module itself
+    if opening != 'NONE':
+        if abs(height - 3.0) > 1e-6:
+            tags.append("h" + _metres(height))
+        if abs(width - 3.0) > 1e-6:
+            tags.append("w" + _metres(width))
+    return kind + "_" + "-".join([_metres(size[0]), _metres(size[1])] + tags)
+
+
+def _metres(value):
+    """4, 2p5, 0p9: metres with up to two decimals. A point would be taken for a number that Blender adds to a repeated
+    name (it turns win_1.4-1.2 into win_1.4-1.001), so the decimal mark is a letter."""
+    return ("%.2f" % value).rstrip("0").rstrip(".").replace(".", "p")
 
 
 class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
@@ -499,7 +613,9 @@ class HOUSE_OT_add_wall_module(bpy.types.Operator, AddObjectHelper):
         bm.free()
 
         object_data_add(context, mesh, operator=self)
-        context.object.name = "Wall_" + self.opening.title()
+        settings = snapshot(self)
+        context.object.name = context.object.data.name = module_name(settings)
+        context.object[STAMP] = json.dumps(settings)
 
         was_editing = context.mode == 'EDIT_MESH'
         if was_editing:

@@ -39,6 +39,9 @@ The module is built the way you would model it by hand: **plane, inset, extrude*
 - Pivot at the bottom center or the bottom-left corner
 - Smooth by Angle (default 30 degrees): flat faces stay flat, steps along an arch get smooth shading, 90 degree corners stay hard; no modifier
 - Auto UV right after modeling: cube projection and Pack Islands without rotation, margin 0.01 (the same recipe as Auto UV in TechArt Tools)
+- Export block at the bottom of the panel: **Export FBX** saves each selected module (with its shutters) as its own FBX file at the world origin, into a folder you choose; **Open Folder** shows that folder in the file manager
+- Modules are named from their settings, and the FBX file gets the same name: `<kind>_<height>-<width>-<features>`, where the size is that of the main opening in metres and `p` is the decimal mark, e.g. `win_1p4-1p2-corn` (a 1.4 x 1.2 m window with a cornice) or `door_2p1-0p9`
+- **My Presets**: **Save Settings as Preset...** keeps the settings of the active module under a name of your own and adds a button for it; the presets are files in the add-on's user folder, so they survive updates
 
 ![topology](docimg/topology.png)
 

@@ -1,7 +1,8 @@
+from . import exporter
 from . import operators
 from . import ui
 
-modules = (operators, ui)
+modules = (operators, exporter, ui)
 
 
 def register():
